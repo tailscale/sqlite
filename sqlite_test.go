@@ -7,6 +7,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -308,6 +309,48 @@ func TestExecScript(t *testing.T) {
 	}
 	if count != 2 {
 		t.Fatalf("count=%d, want 2", count)
+	}
+}
+
+func TestWithPersist(t *testing.T) {
+	db := openTestDB(t)
+	exec(t, db, "CREATE TABLE t (c)")
+
+	ctx := context.Background()
+	sqlConn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlConn.Close()
+
+	ins := "INSERT INTO t VALUES (?)"
+	if _, err := sqlConn.ExecContext(ctx, ins, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	err = sqlConn.Raw(func(driverConn interface{}) error {
+		c := driverConn.(*conn)
+		if c.stmts[ins] != nil {
+			return fmt.Errorf("query %q was persisted", ins)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := sqlConn.ExecContext(WithPersist(ctx), ins, 2); err != nil {
+		t.Fatal(err)
+	}
+	err = sqlConn.Raw(func(driverConn interface{}) error {
+		c := driverConn.(*conn)
+		if c.stmts[ins] == nil {
+			return fmt.Errorf("query %q was not persisted", ins)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
