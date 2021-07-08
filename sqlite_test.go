@@ -274,6 +274,20 @@ func TestShortTimes(t *testing.T) {
 	}
 }
 
+func TestEmptyString(t *testing.T) {
+	db := openTestDB(t)
+	exec(t, db, "CREATE TABLE t (c)")
+	exec(t, db, "INSERT INTO t VALUES (?)", "")
+	exec(t, db, "INSERT INTO t VALUES (?)", "")
+	var count int
+	if err := db.QueryRowContext(context.Background(), "SELECT count(*) FROM t").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("count=%d, want 2", count)
+	}
+}
+
 // TODO(crawshaw): test TextMarshaler
 // TODO(crawshaw): test named types
 // TODO(crawshaw): check coverage

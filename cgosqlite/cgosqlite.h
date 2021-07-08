@@ -4,6 +4,10 @@ static int bind_text64(sqlite3_stmt* stmt, int col, const char* str, sqlite3_uin
 	return sqlite3_bind_text64(stmt, col, str, len, free, SQLITE_UTF8);
 }
 
+static int bind_text64_empty(sqlite3_stmt* stmt, int col) {
+	return sqlite3_bind_text64(stmt, col, "", 0, SQLITE_STATIC, SQLITE_UTF8);
+}
+
 static int bind_blob64(sqlite3_stmt* stmt, int col, char* str, sqlite3_uint64 n) {
 	return sqlite3_bind_blob64(stmt, col, str, n, SQLITE_TRANSIENT);
 }

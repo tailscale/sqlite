@@ -259,10 +259,10 @@ func (stmt *Stmt) BindNull(col int) error {
 // BindText64 is sqlite3_bind_text64.
 // https://sqlite.org/c3ref/bind_blob.html
 func (stmt *Stmt) BindText64(col int, val string) error {
-	v := emptyCStr
-	if len(val) > 0 {
-		v = C.CString(val) // freed by sqlite
+	if len(val) == 0 {
+		return errCode(C.bind_text64_empty(stmt.stmt, C.int(col)))
 	}
+	v := C.CString(val) // freed by sqlite
 	return errCode(C.bind_text64(stmt.stmt, C.int(col), v, C.sqlite3_uint64(len(val))))
 }
 
