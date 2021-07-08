@@ -556,3 +556,49 @@ func (err Error) Error() string {
 	}
 	return b.String()
 }
+
+// SQLConn is a database/sql.Conn.
+// (We cannot create a circular package dependency here.)
+type SQLConn interface {
+	Raw(func(driverConn interface{}) error) error
+}
+
+// ExecScript executes a set of SQL queries on an sql.Conn.
+// It stops on the first error.
+// It is recommended you wrap your script in a BEGIN; ... COMMIT; block.
+//
+// Usage:
+//
+//	c, err := db.Conn(ctx)
+//	if err != nil {
+//		// handle err
+//	}
+//	if err := sqlite.ExecScript(c, queries); err != nil {
+//		// handle err
+//	}
+//	c.Close() // return sql.Conn to pool
+func ExecScript(sqlconn SQLConn, queries string) error {
+	return sqlconn.Raw(func(driverConn interface{}) error {
+		c, ok := driverConn.(*conn)
+		if !ok {
+			return fmt.Errorf("sqlite.ExecScript: sql.Conn is not the sqlite driver: %T", driverConn)
+		}
+
+		for {
+			queries = strings.TrimSpace(queries)
+			if queries == "" {
+				return nil
+			}
+			cstmt, rem, err := c.db.Prepare(queries, 0)
+			if err != nil {
+				return reserr(c.db, "ExecScript", queries, err)
+			}
+			queries = rem
+			_, err = cstmt.Step()
+			cstmt.Finalize()
+			if err != nil {
+				return err
+			}
+		}
+	})
+}
