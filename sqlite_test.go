@@ -288,6 +288,29 @@ func TestEmptyString(t *testing.T) {
 	}
 }
 
+func TestExecScript(t *testing.T) {
+	db := openTestDB(t)
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ExecScript(conn, `BEGIN;
+		CREATE TABLE t (c);
+		INSERT INTO t VALUES ('a');
+		INSERT INTO t VALUES ('b');
+		COMMIT;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.QueryRowContext(context.Background(), "SELECT count(*) FROM t").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("count=%d, want 2", count)
+	}
+}
+
 // TODO(crawshaw): test TextMarshaler
 // TODO(crawshaw): test named types
 // TODO(crawshaw): check coverage
