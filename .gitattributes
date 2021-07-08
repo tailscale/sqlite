@@ -1,0 +1,3 @@
+cgosqlite/sqlite3.c linguist-vendored
+cgosqlite/sqlite3.h linguist-vendored
+cgosqlite/sqlite3ext.h linguist-vendored
