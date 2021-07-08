@@ -198,7 +198,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	}
 	if opts.ReadOnly {
 		// TODO: match the state of the connection.
-		return nil, errors.New("github.com/tailscale/sqlite driver does not support read-only Tx yet")
+		//return nil, errors.New("github.com/tailscale/sqlite driver does not support read-only Tx yet")
 	}
 	if err := c.execInternal(ctx, "BEGIN"); err != nil {
 		return nil, err
@@ -228,7 +228,7 @@ func reserr(db *cgosqlite.DB, loc, query string, err error) error {
 		Query: query,
 	}
 	// TODO(crawshaw): consider an API to expose this. sqlite.DebugErrMsg(db)?
-	if false {
+	if true {
 		e.Msg = db.ErrMsg()
 	}
 	return e
