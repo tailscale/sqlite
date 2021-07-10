@@ -9,6 +9,141 @@ import (
 	"sync"
 )
 
+// OpenFunc is sqlite3_open_v2.
+//
+// Surprisingly: an error opening the DB can return a non-nil handle.
+// Call Close on it.
+//
+// https://sqlite.org/c3ref/open.html
+type OpenFunc func(filename string, flags OpenFlags, vfs string) (DB, error)
+
+// DB is an sqlite3* database connection object.
+// https://sqlite.org/c3ref/sqlite3.html
+type DB interface {
+	// Close is sqlite3_close.
+	// https://sqlite.org/c3ref/close.html
+	Close() error
+	// ErrMsg is sqlite3_errmsg.
+	// https://sqlite.org/c3ref/errcode.html
+	ErrMsg() string
+	// Changes is sqlite3_changes.
+	// https://sqlite.org/c3ref/changes.html
+	Changes() int
+	// TotalChanges is sqlite3_total_changes.
+	// https://sqlite.org/c3ref/total_changes.html
+	TotalChanges() int
+	// ExtendedErrCode is sqlite3_extended_errcode.
+	// https://sqlite.org/c3ref/errcode.html
+	ExtendedErrCode() Code
+	// LastInsertRowid is sqlite3_last_insert_rowid.
+	// https://sqlite.org/c3ref/last_insert_rowid.html
+	LastInsertRowid() int64
+	// Prepare is sqlite3_prepare_v3.
+	// https://www.sqlite.org/c3ref/prepare.html
+	Prepare(query string, prepFlags PrepareFlags) (stmt Stmt, remainingQuery string, err error)
+}
+
+// Stmt is an sqlite3_stmt* database connection object.
+// https://sqlite.org/c3ref/stmt.html
+type Stmt interface {
+	// DBHandle is sqlite3_db_handle.
+	// https://www.sqlite.org/c3ref/db_handle.html.
+	DBHandle() DB
+	// SQL is sqlite3_sql.
+	// https://www.sqlite.org/c3ref/expanded_sql.html
+	SQL() string
+	// ExpandedSQL is sqlite3_expanded_sql.
+	// https://www.sqlite.org/c3ref/expanded_sql.html
+	ExpandedSQL() string
+	// Reset is sqlite3_reset.
+	// https://www.sqlite.org/c3ref/reset.html
+	Reset() error
+	// Finalize is sqlite3_finalize.
+	// https://sqlite.org/c3ref/finalize.html
+	Finalize() error
+	// ClearBindings sqlite3_clear_bindings.
+	//
+	// https://www.sqlite.org/c3ref/clear_bindings.html
+	ClearBindings() error
+	// Step is sqlite3_step.
+	// 	For SQLITE_ROW, Step returns (true, nil).
+	// 	For SQLITE_DONE, Step returns (false, nil).
+	// 	For any error, Step retursn (false, err).
+	// https://www.sqlite.org/c3ref/step.html
+	Step() (row bool, err error)
+	// StepResult is sqlite3_step + sqlite3_last_insert_rowid + sqlite3_changes.
+	// 	For SQLITE_ROW, Step returns (true, nil).
+	// 	For SQLITE_DONE, Step returns (false, nil).
+	// 	For any error, Step retursn (false, err).
+	// https://www.sqlite.org/c3ref/step.html
+	StepResult() (row bool, lastInsertRowID, changes int64, err error)
+	// BindDouble is sqlite3_bind_double.
+	// https://sqlite.org/c3ref/bind_blob.html
+	BindDouble(col int, val float64) error
+	// BindInt64 is sqlite3_bind_int64.
+	// https://sqlite.org/c3ref/bind_blob.html
+	BindInt64(col int, val int64) error
+	// BindNull is sqlite3_bind_null.
+	// https://sqlite.org/c3ref/bind_blob.html
+	BindNull(col int) error
+	// BindText64 is sqlite3_bind_text64.
+	// https://sqlite.org/c3ref/bind_blob.html
+	BindText64(col int, val string) error
+	// BindZeroBlob64 is sqlite3_bind_zeroblob64.
+	// https://sqlite.org/c3ref/bind_blob.html
+	BindZeroBlob64(col int, n uint64) error
+	// BindBlob64 is sqlite3_bind_blob64.
+	// https://sqlite.org/c3ref/bind_blob.html
+	BindBlob64(col int, val []byte) error
+	// BindParameterCount is sqlite3_bind_parameter_count.
+	// https://sqlite.org/c3ref/bind_parameter_count.html
+	BindParameterCount() int
+	// BindParameterName is sqlite3_bind_parameter_name.
+	// https://sqlite.org/c3ref/bind_parameter_count.html
+	BindParameterName(col int) string
+	// BindParameterIndex is sqlite3_bind_parameter_index.
+	// Returns zero if no matching parameter is found.
+	// https://sqlite.org/c3ref/bind_parameter_index.html
+	BindParameterIndex(name string) int
+	// BindParameterIndexSearch calls sqlite3_bind_parameter_index,
+	// prepending ':', '@', and '?' until it finds a matching paramter.
+	BindParameterIndexSearch(name string) int
+	// ColumnCount is sqlite3_column_count.
+	// https://sqlite.org/c3ref/column_count.html
+	ColumnCount() int
+	// ColumnName is sqlite3_column_name.
+	// https://sqlite.org/c3ref/column_name.html
+	ColumnName(col int) string
+	// ColumnText is sqlite3_column_text.
+	// https://sqlite.org/c3ref/column_blob.html
+	ColumnText(col int) string
+	// ColumnBlob is sqlite3_column_blob.
+	//
+	// WARNING: The returned memory is managed by C and is only valid until
+	//          another call is made on this Stmt.
+	//
+	// https://sqlite.org/c3ref/column_blob.html
+	ColumnBlob(col int) []byte
+	// ColumnDouble is sqlite3_column_double.
+	// https://sqlite.org/c3ref/column_blob.html
+	ColumnDouble(col int) float64
+	// ColumnInt64 is sqlite3_column_int64.
+	// https://sqlite.org/c3ref/column_blob.html
+	ColumnInt64(col int) int64
+	// ColumnType is sqlite3_column_type.
+	// https://www.sqlite.org/c3ref/column_blob.html
+	ColumnType(col int) ColumnType
+	// ColumnDeclType is sqlite3_column_decltype.
+	// https://sqlite.org/c3ref/column_decltype.html
+	ColumnDeclType(col int) string
+	// ColumnDatabaseName is sqlite3_column_database_name.
+	// https://sqlite.org/c3ref/column_database_name.html
+	ColumnDatabaseName(col int) string
+	// ColumnTableName is sqlite3_column_table_name.
+	// https://sqlite.org/c3ref/column_database_name.html
+	ColumnTableName(col int) string
+}
+
 // ColumnType are constants for each of the SQLite datatypes.
 // https://www.sqlite.org/c3ref/c_blob.html
 type ColumnType int

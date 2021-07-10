@@ -89,9 +89,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tailscale/sqlite/cgosqlite"
 	"github.com/tailscale/sqlite/sqliteh"
 )
+
+var Open sqliteh.OpenFunc = func(string, sqliteh.OpenFlags, string) (sqliteh.DB, error) {
+	return nil, fmt.Errorf("cgosqlite.Open is missing")
+}
 
 // TimeFormat is the string format this driver uses to store
 // microsecond-precision time in SQLite in text format.
@@ -117,23 +120,28 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	flags := sqliteh.SQLITE_OPEN_URI |
 		sqliteh.SQLITE_OPEN_READWRITE |
 		sqliteh.SQLITE_OPEN_CREATE
-	db, err := cgosqlite.Open(c.name, flags, "")
+	db, err := Open(c.name, flags, "")
 	if err != nil {
-		e := &Error{
-			Code: sqliteh.Code(err.(sqliteh.ErrCode)),
-			Loc:  "Open",
+		if ec, ok := err.(sqliteh.ErrCode); ok {
+			e := &Error{
+				Code: sqliteh.Code(ec),
+				Loc:  "Open",
+			}
+			if db != nil {
+				e.Msg = db.ErrMsg()
+			}
+			err = e
 		}
 		if db != nil {
-			e.Msg = db.ErrMsg()
 			db.Close()
 		}
-		return nil, e
+		return nil, err
 	}
 	return &conn{db: db}, nil
 }
 
 type conn struct {
-	db    *cgosqlite.DB
+	db    sqliteh.DB
 	stmts map[string]*stmt // persisted statements
 }
 
@@ -224,7 +232,7 @@ func (tx *connTx) Rollback() error {
 	return tx.c.execInternal(context.Background(), "ROLLBACK")
 }
 
-func reserr(db *cgosqlite.DB, loc, query string, err error) error {
+func reserr(db sqliteh.DB, loc, query string, err error) error {
 	if err == nil {
 		return nil
 	}
@@ -241,8 +249,8 @@ func reserr(db *cgosqlite.DB, loc, query string, err error) error {
 }
 
 type stmt struct {
-	db      *cgosqlite.DB
-	stmt    *cgosqlite.Stmt
+	db      sqliteh.DB
+	stmt    sqliteh.Stmt
 	query   string
 	persist bool
 }
