@@ -34,7 +34,7 @@ func TestOpenDB(t *testing.T) {
 	}
 }
 
-func openTestDB(t *testing.T) *sql.DB {
+func openTestDB(t testing.TB) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", "file:"+t.TempDir()+"/test.db")
 	if err != nil {
@@ -46,6 +46,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	if _, err := db.Exec("PRAGMA synchronous=OFF"); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { db.Close() })
 	return db
 }
 
@@ -351,6 +352,30 @@ func TestWithPersist(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func BenchmarkPersist(b *testing.B) {
+	ctx := context.Background()
+	db := openTestDB(b)
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = ExecScript(conn, `BEGIN;
+		CREATE TABLE t (c);
+		INSERT INTO t VALUES ('a');
+		INSERT INTO t VALUES ('b');
+		COMMIT;`)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		var str string
+		if err := db.QueryRowContext(WithPersist(ctx), "SELECT c FROM t LIMIT 1").Scan(&str); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
