@@ -253,6 +253,10 @@ type stmt struct {
 	stmt    sqliteh.Stmt
 	query   string
 	persist bool
+
+	// filled on first step only if persist==true
+	colTypes     []sqliteh.ColumnType
+	colDeclTypes []string
 }
 
 func (s *stmt) reserr(loc string, err error) error { return reserr(s.db, loc, s.query, err) }
@@ -482,13 +486,21 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 
 	if r.colTypes == nil {
-		colCount := r.stmt.stmt.ColumnCount()
-		r.colTypes = make([]sqliteh.ColumnType, colCount)
-		r.colDeclTypes = make([]string, colCount)
-
-		for i := range r.colTypes {
-			r.colTypes[i] = r.stmt.stmt.ColumnType(i)
-			r.colDeclTypes[i] = r.stmt.stmt.ColumnDeclType(i)
+		if r.stmt.colTypes != nil {
+			r.colTypes = r.stmt.colTypes
+			r.colDeclTypes = r.stmt.colDeclTypes
+		} else {
+			colCount := r.stmt.stmt.ColumnCount()
+			r.colTypes = make([]sqliteh.ColumnType, colCount)
+			r.colDeclTypes = make([]string, colCount)
+			for i := range r.colTypes {
+				r.colTypes[i] = r.stmt.stmt.ColumnType(i)
+				r.colDeclTypes[i] = r.stmt.stmt.ColumnDeclType(i)
+			}
+			if r.stmt.persist {
+				r.stmt.colTypes = r.colTypes
+				r.stmt.colDeclTypes = r.colDeclTypes
+			}
 		}
 	}
 
