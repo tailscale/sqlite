@@ -36,3 +36,13 @@ static int step_result(sqlite3_stmt* stmt, sqlite3_int64* rowid, sqlite3_int64* 
 	*changes = sqlite3_changes(db);
 	return ret;
 }
+
+// reset_and_clear combines two cgo calls to save overhead.
+static int reset_and_clear(sqlite3_stmt* stmt) {
+	int ret = sqlite3_reset(stmt);
+	int ret2 = sqlite3_clear_bindings(stmt);
+	if (ret != SQLITE_OK) {
+		return ret;
+	}
+	return ret2;
+}

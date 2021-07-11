@@ -58,6 +58,8 @@ type Stmt interface {
 	// Reset is sqlite3_reset.
 	// https://www.sqlite.org/c3ref/reset.html
 	Reset() error
+	// ResetAndClear is sqlite3_reset + sqlite3_clear_bindings.
+	ResetAndClear() error
 	// Finalize is sqlite3_finalize.
 	// https://sqlite.org/c3ref/finalize.html
 	Finalize() error
