@@ -148,6 +148,10 @@ func (stmt *Stmt) ClearBindings() error {
 	return errCode(C.sqlite3_clear_bindings(stmt.stmt))
 }
 
+func (stmt *Stmt) ResetAndClear() error {
+	return errCode(C.reset_and_clear(stmt.stmt))
+}
+
 func (stmt *Stmt) ColumnDatabaseName(col int) string {
 	return C.GoString((*C.char)(unsafe.Pointer(C.sqlite3_column_database_name(stmt.stmt, C.int(col)))))
 }

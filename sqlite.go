@@ -252,7 +252,8 @@ type stmt struct {
 	db      sqliteh.DB
 	stmt    sqliteh.Stmt
 	query   string
-	persist bool
+	persist bool // true if stmt is cached and lives beyond Close
+	bound   bool // true if stmt has parameters bound
 
 	// filled on first step only if persist==true
 	colTypes     []sqliteh.ColumnType
@@ -264,8 +265,7 @@ func (s *stmt) reserr(loc string, err error) error { return reserr(s.db, loc, s.
 func (s *stmt) NumInput() int                      { return s.stmt.BindParameterCount() }
 func (s *stmt) Close() error {
 	if s.persist {
-		s.stmt.ClearBindings()
-		return s.reserr("Stmt.Close", s.stmt.Reset())
+		return s.reserr("Stmt.Close", s.resetAndClear())
 	}
 	return s.reserr("Stmt.Close", s.stmt.Finalize())
 }
@@ -273,11 +273,10 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) { panic("depreca
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error)  { panic("deprecated, unused") }
 
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
-	if err := s.stmt.Reset(); err != nil {
+	if err := s.resetAndClear(); err != nil {
 		return nil, s.reserr("Stmt.Query(Reset)", err)
 	}
-	defer s.stmt.ClearBindings()
-	defer s.stmt.Reset() // returns same error as StepResult
+	defer s.resetAndClear() // returns same error as StepResult
 	if err := s.bindAll(args); err != nil {
 		return nil, err
 	}
@@ -298,7 +297,7 @@ func (res stmtResult) LastInsertId() (int64, error) { return res.lastInsertID, n
 func (res stmtResult) RowsAffected() (int64, error) { return res.rowsAffected, nil }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
-	if err := s.stmt.Reset(); err != nil {
+	if err := s.resetAndClear(); err != nil {
 		return nil, s.reserr("Stmt.Query(Reset)", err)
 	}
 	if err := s.bindAll(args); err != nil {
@@ -307,7 +306,19 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 	return &rows{stmt: s}, nil
 }
 
+func (s *stmt) resetAndClear() error {
+	if !s.bound {
+		return nil
+	}
+	s.bound = false
+	return s.stmt.ResetAndClear()
+}
+
 func (s *stmt) bindAll(args []driver.NamedValue) error {
+	if s.bound {
+		panic("sqlite: impossible state, query already running: " + s.query)
+	}
+	s.bound = true
 	for _, arg := range args {
 		if err := s.bind(arg); err != nil {
 			return err
@@ -475,10 +486,10 @@ func (r *rows) Close() error {
 		return errors.New("sqlite rows result already closed")
 	}
 	r.closed = true
-	if err := r.stmt.stmt.Reset(); err != nil {
+	if err := r.stmt.resetAndClear(); err != nil {
 		return r.stmt.reserr("Rows.Close(Reset)", err)
 	}
-	return r.stmt.reserr("Rows.Close(ClearBindings)", r.stmt.stmt.ClearBindings())
+	return nil
 }
 
 func (r *rows) Next(dest []driver.Value) error {
