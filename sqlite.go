@@ -177,7 +177,7 @@ func (c *conn) prepare(query string, persist bool) (*stmt, error) {
 			Msg:   fmt.Sprintf("query has trailing text: %q", rem),
 		}
 	}
-	s := &stmt{db: c.db, stmt: cstmt, query: query, persist: persist}
+	s := &stmt{db: c.db, stmt: cstmt, query: query, persist: persist, numInput: -1}
 
 	if !persist {
 		return s, nil
@@ -255,6 +255,8 @@ type stmt struct {
 	persist bool // true if stmt is cached and lives beyond Close
 	bound   bool // true if stmt has parameters bound
 
+	numInput int // filled on first NumInput only if persist==true
+
 	// filled on first step only if persist==true
 	colTypes     []sqliteh.ColumnType
 	colDeclTypes []string
@@ -262,7 +264,17 @@ type stmt struct {
 }
 
 func (s *stmt) reserr(loc string, err error) error { return reserr(s.db, loc, s.query, err) }
-func (s *stmt) NumInput() int                      { return s.stmt.BindParameterCount() }
+
+func (s *stmt) NumInput() int {
+	if s.persist {
+		if s.numInput == -1 {
+			s.numInput = s.stmt.BindParameterCount()
+		}
+		return s.numInput
+	}
+	return s.stmt.BindParameterCount()
+}
+
 func (s *stmt) Close() error {
 	if s.persist {
 		return s.reserr("Stmt.Close", s.resetAndClear())

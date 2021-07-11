@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +47,11 @@ func openTestDB(t testing.TB) *sql.DB {
 	if _, err := db.Exec("PRAGMA synchronous=OFF"); err != nil {
 		t.Fatal(err)
 	}
+	numConns := runtime.GOMAXPROCS(0)
+	db.SetMaxOpenConns(numConns)
+	db.SetMaxIdleConns(numConns)
+	db.SetConnMaxLifetime(0)
+	db.SetConnMaxIdleTime(0)
 	t.Cleanup(func() { db.Close() })
 	return db
 }
@@ -374,6 +380,17 @@ func BenchmarkPersist(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var str string
 		if err := db.QueryRowContext(WithPersist(ctx), "SELECT c FROM t LIMIT 1").Scan(&str); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkEmptyExec(b *testing.B) {
+	ctx := context.Background()
+	db := openTestDB(b)
+	ctx = WithPersist(ctx)
+	for i := 0; i < b.N; i++ {
+		if _, err := db.ExecContext(ctx, "SELECT null LIMIT 0;"); err != nil {
 			b.Fatal(err)
 		}
 	}
