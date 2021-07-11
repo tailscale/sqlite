@@ -257,6 +257,7 @@ type stmt struct {
 	// filled on first step only if persist==true
 	colTypes     []sqliteh.ColumnType
 	colDeclTypes []string
+	colNames     []string
 }
 
 func (s *stmt) reserr(loc string, err error) error { return reserr(s.db, loc, s.query, err) }
@@ -454,9 +455,16 @@ func (r *rows) Columns() []string {
 		panic("Columns called after Rows was closed")
 	}
 	if r.colNames == nil {
-		r.colNames = make([]string, r.stmt.stmt.ColumnCount())
-		for i := range r.colNames {
-			r.colNames[i] = r.stmt.stmt.ColumnName(i)
+		if r.stmt.colNames != nil {
+			r.colNames = r.stmt.colNames
+		} else {
+			r.colNames = make([]string, r.stmt.stmt.ColumnCount())
+			for i := range r.colNames {
+				r.colNames[i] = r.stmt.stmt.ColumnName(i)
+			}
+			if r.stmt.persist {
+				r.stmt.colNames = r.colNames
+			}
 		}
 	}
 	return append([]string{}, r.colNames...)
