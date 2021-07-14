@@ -59,11 +59,14 @@ type Stmt interface {
 	// ExpandedSQL is sqlite3_expanded_sql.
 	// https://www.sqlite.org/c3ref/expanded_sql.html
 	ExpandedSQL() string
+	// StartTimer starts recording elapsed duration.
+	StartTimer()
 	// Reset is sqlite3_reset.
 	// https://www.sqlite.org/c3ref/reset.html
 	Reset() error
 	// ResetAndClear is sqlite3_reset + sqlite3_clear_bindings.
-	ResetAndClear() error
+	// It reports the duration elapsed since the call to StartTimer.
+	ResetAndClear() (time.Duration, error)
 	// Finalize is sqlite3_finalize.
 	// https://sqlite.org/c3ref/finalize.html
 	Finalize() error
@@ -86,7 +89,7 @@ type Stmt interface {
 	// 	For SQLITE_DONE, Step returns row=false err=nil
 	// 	For any error, Step returns row=false err.
 	// https://www.sqlite.org/c3ref/step.html
-	StepResult() (row bool, lastInsertRowID, changes int64, err error)
+	StepResult() (row bool, lastInsertRowID, changes int64, d time.Duration, err error)
 	// BindDouble is sqlite3_bind_double.
 	// https://sqlite.org/c3ref/bind_blob.html
 	BindDouble(col int, val float64) error

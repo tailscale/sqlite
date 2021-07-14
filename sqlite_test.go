@@ -35,12 +35,7 @@ func TestOpenDB(t *testing.T) {
 	}
 }
 
-func openTestDB(t testing.TB) *sql.DB {
-	t.Helper()
-	db, err := sql.Open("sqlite3", "file:"+t.TempDir()+"/test.db")
-	if err != nil {
-		t.Fatal(err)
-	}
+func configDB(t testing.TB, db *sql.DB) {
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +48,22 @@ func openTestDB(t testing.TB) *sql.DB {
 	db.SetConnMaxLifetime(0)
 	db.SetConnMaxIdleTime(0)
 	t.Cleanup(func() { db.Close() })
+}
+
+func openTestDB(t testing.TB) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", "file:"+t.TempDir()+"/test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	configDB(t, db)
+	return db
+}
+
+func openTestDBTrace(t testing.TB, traceFunc TraceFunc) *sql.DB {
+	t.Helper()
+	db := sql.OpenDB(Connector("file:"+t.TempDir()+"/test.db", traceFunc))
+	configDB(t, db)
 	return db
 }
 
@@ -414,6 +425,99 @@ func TestErrors(t *testing.T) {
 	if want := `Stmt.Exec: SQLITE_CONSTRAINT: UNIQUE constraint failed: t.c`; !strings.Contains(err.Error(), want) {
 		t.Errorf("err=%v, want %q", err, want)
 	}
+}
+
+func TestTrace(t *testing.T) {
+	type traceEvent struct {
+		prepCtx  context.Context
+		query    string
+		duration time.Duration
+		err      error
+	}
+	evCh := make(chan traceEvent, 16)
+	fn := func(prepCtx context.Context, query string, duration time.Duration, err error) {
+		evCh <- traceEvent{prepCtx, query, duration, err}
+	}
+	type ctxKey struct{}
+	expectEv := func(srcCtx context.Context, query string, errSubstr string) {
+		t.Helper()
+		ev, ok := <-evCh
+		if !ok {
+			t.Fatal("trace: no event")
+		}
+		if ev.prepCtx == nil {
+			t.Errorf("trace: prepCtx==nil")
+		} else if want, got := srcCtx.Value(ctxKey{}), ev.prepCtx.Value(ctxKey{}); want != got {
+			t.Errorf("trace: prepCtx value=%v, want %v", got, want)
+		}
+		if ev.query != query {
+			t.Errorf("trace: query=%q, want %q", ev.query, query)
+		}
+		switch {
+		case ev.err == nil && errSubstr != "":
+			t.Errorf("trace: err=nil, want %q", errSubstr)
+		case ev.err != nil && errSubstr == "":
+			t.Errorf("trace: err=%v, want nil", ev.err)
+		case ev.err != nil && !strings.Contains(ev.err.Error(), errSubstr):
+			t.Errorf("trace: err=%v, want %v", ev.err, errSubstr)
+		}
+		if ev.duration <= 0 || ev.duration > 10*time.Minute {
+			t.Errorf("trace: improbable duration: %v", ev.duration)
+		}
+	}
+	db := openTestDBTrace(t, fn)
+	noErr := ""
+	expectEv(context.Background(), "PRAGMA journal_mode=WAL", noErr) // from configDB
+	expectEv(context.Background(), "PRAGMA synchronous=OFF", noErr)
+
+	execCtx := func(ctx context.Context, query string, args ...interface{}) {
+		t.Helper()
+		if _, err := db.ExecContext(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
+		expectEv(ctx, query, noErr)
+	}
+	ctx := WithPersist(context.Background())
+	ctx = context.WithValue(ctx, ctxKey{}, 7)
+	execCtx(ctx, "CREATE TABLE t (c)")
+
+	ins := "INSERT INTO t VALUES (?)"
+	execCtx(ctx, ins, 1)
+	execCtx(WithPersist(ctx), ins, 2)
+
+	execCtx(ctx, "SELECT null LIMIT 0;")
+
+	rows, err := db.QueryContext(ctx, "SELECT * FROM t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var val int64
+		if err := rows.Scan(&val); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	expectEv(ctx, "SELECT * FROM t", noErr)
+
+	_, err = db.ExecContext(ctx, "DELETOR")
+	if err == nil {
+		t.Fatal(err)
+	}
+	expectEv(ctx, "DELETOR", err.Error())
+
+	execCtx(context.WithValue(ctx, ctxKey{}, 9), "CREATE TABLE t2 (c INTEGER PRIMARY KEY)")
+	execCtx(ctx, "INSERT INTO t2 (c) VALUES (1)")
+	_, err = db.ExecContext(ctx, "INSERT INTO t2 (c) VALUES (1)")
+	if err == nil {
+		t.Fatal(err)
+	}
+	expectEv(ctx, "INSERT INTO t2 (c) VALUES (1)", "UNIQUE constraint failed")
 }
 
 func BenchmarkPersist(b *testing.B) {

@@ -79,6 +79,20 @@ var Open sqliteh.OpenFunc = func(string, sqliteh.OpenFlags, string) (sqliteh.DB,
 	return nil, fmt.Errorf("cgosqlite.Open is missing")
 }
 
+// TraceFunc is function called by the driver to report a completed query.
+//
+// The prepCtx context is the context object provided by the user when
+// preparing or executing the statement. This can be used by the tracer
+// to plumb through context values.
+//
+// The query string is the string the user provided to Prepare.
+// No parameters are filled in.
+//
+// The duration covers the complete execution time of the query,
+// including both time spent inside SQLite, and time spent in user
+// code between calls to rows.Next.
+type TraceFunc func(prepCtx context.Context, query string, duration time.Duration, err error)
+
 // TimeFormat is the string format this driver uses to store
 // microsecond-precision time in SQLite in text format.
 const TimeFormat = "2006-01-02 15:04:05.000-0700"
@@ -94,8 +108,16 @@ func (d drv) OpenConnector(name string) (driver.Connector, error) {
 	return &connector{name: name}, nil
 }
 
+func Connector(sqliteURI string, traceFunc TraceFunc) driver.Connector {
+	return &connector{
+		name:      sqliteURI,
+		traceFunc: traceFunc,
+	}
+}
+
 type connector struct {
-	name string
+	name      string
+	traceFunc TraceFunc
 }
 
 func (c *connector) Driver() driver.Driver { return drv{} }
@@ -118,12 +140,13 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, err
 	}
 	db.BusyTimeout(2 * time.Second) // TODO: justify choice; make configurable?
-	return &conn{db: db}, nil
+	return &conn{db: db, traceFunc: c.traceFunc}, nil
 }
 
 type conn struct {
-	db    sqliteh.DB
-	stmts map[string]*stmt // persisted statements
+	db        sqliteh.DB
+	traceFunc TraceFunc
+	stmts     map[string]*stmt // persisted statements
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) { panic("deprecated, unused") }
@@ -133,13 +156,24 @@ func (c *conn) Close() error {
 }
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	persist := ctx.Value(persistQuery{}) != nil
-	return c.prepare(query, persist)
+	return c.prepare(ctx, query, persist)
 }
 
-func (c *conn) prepare(query string, persist bool) (*stmt, error) {
+func (c *conn) prepare(ctx context.Context, query string, persist bool) (s *stmt, err error) {
 	query = strings.TrimSpace(query)
 	if s := c.stmts[query]; s != nil {
+		s.prepCtx = ctx
 		return s, nil
+	}
+	if c.traceFunc != nil {
+		// Not a hot path. Any high-load environment should use
+		// WithPersist so this is rare.
+		start := time.Now()
+		defer func() {
+			if err != nil {
+				c.traceFunc(ctx, query, time.Since(start), err)
+			}
+		}()
 	}
 	var flags sqliteh.PrepareFlags
 	if persist {
@@ -158,7 +192,15 @@ func (c *conn) prepare(query string, persist bool) (*stmt, error) {
 			Msg:   fmt.Sprintf("query has trailing text: %q", rem),
 		}
 	}
-	s := &stmt{db: c.db, stmt: cstmt, query: query, persist: persist, numInput: -1}
+	s = &stmt{
+		db:        c.db,
+		stmt:      cstmt,
+		query:     query,
+		traceFunc: c.traceFunc,
+		persist:   persist,
+		numInput:  -1,
+		prepCtx:   ctx,
+	}
 
 	if !persist {
 		return s, nil
@@ -172,7 +214,7 @@ func (c *conn) prepare(query string, persist bool) (*stmt, error) {
 }
 
 func (c *conn) execInternal(ctx context.Context, query string) error {
-	s, err := c.prepare(query, true)
+	s, err := c.prepare(ctx, query, true)
 	if err != nil {
 		if e, _ := err.(*Error); e != nil {
 			e.Loc = "internal:" + e.Loc
@@ -230,13 +272,16 @@ func reserr(db sqliteh.DB, loc, query string, err error) error {
 }
 
 type stmt struct {
-	db      sqliteh.DB
-	stmt    sqliteh.Stmt
-	query   string
-	persist bool // true if stmt is cached and lives beyond Close
-	bound   bool // true if stmt has parameters bound
+	db        sqliteh.DB
+	stmt      sqliteh.Stmt
+	query     string
+	traceFunc TraceFunc
+	persist   bool // true if stmt is cached and lives beyond Close
+	bound     bool // true if stmt has parameters bound
 
 	numInput int // filled on first NumInput only if persist==true
+
+	prepCtx context.Context // the context provided to prepare, for tracing
 
 	// filled on first step only if persist==true
 	colTypes     []sqliteh.ColumnType
@@ -267,14 +312,17 @@ func (s *stmt) Query(args []driver.Value) (driver.Rows, error)  { panic("depreca
 
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
 	if err := s.resetAndClear(); err != nil {
-		return nil, s.reserr("Stmt.Query(Reset)", err)
+		return nil, s.reserr("Stmt.Exec(Reset)", err)
 	}
 	if err := s.bindAll(args); err != nil {
 		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
-	row, lastInsertRowID, changes, err := s.stmt.StepResult()
+	row, lastInsertRowID, changes, duration, err := s.stmt.StepResult()
 	s.bound = false // StepResult resets the query
 	err = s.reserr("Stmt.Exec", err)
+	if s.traceFunc != nil {
+		s.traceFunc(s.prepCtx, s.query, duration, err)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +353,11 @@ func (s *stmt) resetAndClear() error {
 		return nil
 	}
 	s.bound = false
-	return s.stmt.ResetAndClear()
+	duration, err := s.stmt.ResetAndClear()
+	if s.traceFunc != nil {
+		s.traceFunc(s.prepCtx, s.query, duration, err)
+	}
+	return err
 }
 
 func (s *stmt) bindAll(args []driver.NamedValue) error {
@@ -313,6 +365,9 @@ func (s *stmt) bindAll(args []driver.NamedValue) error {
 		panic("sqlite: impossible state, query already running: " + s.query)
 	}
 	s.bound = true
+	if s.traceFunc != nil {
+		s.stmt.StartTimer()
+	}
 	for _, arg := range args {
 		if err := s.bind(arg); err != nil {
 			return err
