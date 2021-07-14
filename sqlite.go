@@ -111,8 +111,18 @@ func (d drv) OpenConnector(name string) (driver.Connector, error) {
 	return &connector{name: name}, nil
 }
 
+type TraceFunc func(traceID uint64, query string, rows int, duration time.Duration, err error)
+
+func Connector(sqliteURI string, traceFunc TraceFunc) driver.Connector {
+	return &connector{
+		name:      sqliteURI,
+		traceFunc: traceFunc,
+	}
+}
+
 type connector struct {
-	name string
+	name      string
+	traceFunc TraceFunc
 }
 
 func (c *connector) Driver() driver.Driver { return drv{} }

@@ -35,6 +35,7 @@ package cgosqlite
 // #include <string.h>
 // #include <pthread.h>
 // #include <sqlite3.h>
+// #include <time.h>
 // #include "cgosqlite.h"
 import "C"
 import (
@@ -56,8 +57,9 @@ type DB struct {
 
 // Stmt implements sqliteh.Stmt.
 type Stmt struct {
-	db   *DB
-	stmt *C.sqlite3_stmt
+	db    *DB
+	stmt  *C.sqlite3_stmt
+	start C.struct_timespec
 }
 
 // Open implements sqliteh.OpenFunc.
@@ -161,7 +163,7 @@ func (stmt *Stmt) ColumnTableName(col int) string {
 }
 
 func (stmt *Stmt) Step() (row bool, err error) {
-	res := C.sqlite3_step(stmt.stmt)
+	res := C.step(stmt.stmt, &stmt.duration)
 	switch res {
 	case C.SQLITE_ROW:
 		return true, nil
@@ -174,7 +176,7 @@ func (stmt *Stmt) Step() (row bool, err error) {
 
 func (stmt *Stmt) StepResult() (row bool, lastInsertRowID, changes int64, err error) {
 	var rowid, chng C.sqlite3_int64
-	res := C.step_result(stmt.stmt, &rowid, &chng)
+	res := C.step_result(stmt.stmt, &rowid, &chng, &stmt.duration)
 	lastInsertRowID = int64(rowid)
 	changes = int64(chng)
 
