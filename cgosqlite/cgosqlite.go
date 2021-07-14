@@ -27,7 +27,7 @@ package cgosqlite
 // #cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA
 // #cgo CFLAGS: -DSQLITE_ENABLE_STAT4
 // #cgo CFLAGS: -DHAVE_USLEEP=1
-// #cgo linux LDFLAGS: -ldl -lm
+// #cgo linux LDFLAGS: -ldl -lm -lrt
 // #cgo linux CFLAGS: -std=c99
 //
 // #include <stdint.h>
@@ -35,6 +35,7 @@ package cgosqlite
 // #include <string.h>
 // #include <pthread.h>
 // #include <sqlite3.h>
+// #include <time.h>
 // #include "cgosqlite.h"
 import "C"
 import (
@@ -57,8 +58,13 @@ type DB struct {
 
 // Stmt implements sqliteh.Stmt.
 type Stmt struct {
-	db   *DB
-	stmt *C.sqlite3_stmt
+	db    *DB
+	stmt  *C.sqlite3_stmt
+	start C.struct_timespec
+
+	// used as scratch space when calling into cgo
+	rowid, changes C.sqlite3_int64
+	duration       C.int64_t
 }
 
 // Open implements sqliteh.OpenFunc.
@@ -153,8 +159,17 @@ func (stmt *Stmt) ClearBindings() error {
 	return errCode(C.sqlite3_clear_bindings(stmt.stmt))
 }
 
-func (stmt *Stmt) ResetAndClear() error {
-	return errCode(C.reset_and_clear(stmt.stmt))
+func (stmt *Stmt) ResetAndClear() (time.Duration, error) {
+	if stmt.start != (C.struct_timespec{}) {
+		stmt.duration = 0
+		err := errCode(C.reset_and_clear(stmt.stmt, &stmt.start, &stmt.duration))
+		return time.Duration(stmt.duration), err
+	}
+	return 0, errCode(C.reset_and_clear(stmt.stmt, nil, nil))
+}
+
+func (stmt *Stmt) StartTimer() {
+	C.monotonic_clock_gettime(&stmt.start)
 }
 
 func (stmt *Stmt) ColumnDatabaseName(col int) string {
@@ -177,19 +192,20 @@ func (stmt *Stmt) Step() (row bool, err error) {
 	}
 }
 
-func (stmt *Stmt) StepResult() (row bool, lastInsertRowID, changes int64, err error) {
-	var rowid, chng C.sqlite3_int64
-	res := C.step_result(stmt.stmt, &rowid, &chng)
-	lastInsertRowID = int64(rowid)
-	changes = int64(chng)
+func (stmt *Stmt) StepResult() (row bool, lastInsertRowID, changes int64, d time.Duration, err error) {
+	stmt.rowid, stmt.changes, stmt.duration = 0, 0, 0
+	res := C.step_result(stmt.stmt, &stmt.rowid, &stmt.changes, &stmt.duration)
+	lastInsertRowID = int64(stmt.rowid)
+	changes = int64(stmt.changes)
+	d = time.Duration(stmt.duration)
 
 	switch res {
 	case C.SQLITE_ROW:
-		return true, lastInsertRowID, changes, nil
+		return true, lastInsertRowID, changes, d, nil
 	case C.SQLITE_DONE:
-		return false, lastInsertRowID, changes, nil
+		return false, lastInsertRowID, changes, d, nil
 	default:
-		return false, lastInsertRowID, changes, errCode(res)
+		return false, lastInsertRowID, changes, d, errCode(res)
 	}
 }
 
