@@ -28,12 +28,14 @@ static int bind_parameter_index(sqlite3_stmt* stmt, _GoString_ s) {
 	return sqlite3_bind_parameter_index(stmt, zName);
 }
 
-// step_result combines three cgo calls to save overhead.
+// step_result combines several cgo calls to save overhead.
 static int step_result(sqlite3_stmt* stmt, sqlite3_int64* rowid, sqlite3_int64* changes) {
 	int ret = sqlite3_step(stmt);
 	sqlite3* db = sqlite3_db_handle(stmt);
 	*rowid = sqlite3_last_insert_rowid(db);
 	*changes = sqlite3_changes(db);
+	sqlite3_reset(stmt);
+	sqlite3_clear_bindings(stmt);
 	return ret;
 }
 

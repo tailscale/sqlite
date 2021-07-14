@@ -288,15 +288,15 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if err := s.resetAndClear(); err != nil {
 		return nil, s.reserr("Stmt.Query(Reset)", err)
 	}
-	defer s.resetAndClear() // returns same error as StepResult
 	if err := s.bindAll(args); err != nil {
 		return nil, err
 	}
 	row, lastInsertRowID, changes, err := s.stmt.StepResult()
-	_ = row // TODO: return error if exec on query which returns rows?
+	s.bound = false // StepResult resets the query
 	if err != nil {
 		return nil, err
 	}
+	_ = row // TODO: return error if exec on query which returns rows?
 	return stmtResult{lastInsertID: lastInsertRowID, rowsAffected: changes}, nil
 }
 
