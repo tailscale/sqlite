@@ -73,10 +73,14 @@ type Stmt interface {
 	// 	For any error, Step retursn (false, err).
 	// https://www.sqlite.org/c3ref/step.html
 	Step() (row bool, err error)
-	// StepResult is sqlite3_step + sqlite3_last_insert_rowid + sqlite3_changes.
-	// 	For SQLITE_ROW, Step returns (true, nil).
-	// 	For SQLITE_DONE, Step returns (false, nil).
-	// 	For any error, Step retursn (false, err).
+	// StepResult executes a one-row query and resets the statment:
+	//	sqlite3_step
+	//	sqlite3_last_insert_rowid + sqlite3_changes
+	//	sqlite3_reset + sqlite3_clear_bindings
+	// Results:
+	// 	For SQLITE_ROW, Step returns row=true err=nil
+	// 	For SQLITE_DONE, Step returns row=false err=nil
+	// 	For any error, Step returns row=false err.
 	// https://www.sqlite.org/c3ref/step.html
 	StepResult() (row bool, lastInsertRowID, changes int64, err error)
 	// BindDouble is sqlite3_bind_double.
