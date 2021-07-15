@@ -134,6 +134,7 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 		}
 		return nil, err
 	}
+	db.BusyTimeout(2 * time.Second) // TODO: justify choice; make configurable?
 	return &conn{db: db}, nil
 }
 

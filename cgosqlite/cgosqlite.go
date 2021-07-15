@@ -38,6 +38,7 @@ package cgosqlite
 // #include "cgosqlite.h"
 import "C"
 import (
+	"time"
 	"unsafe"
 
 	"github.com/tailscale/sqlite/sqliteh"
@@ -104,6 +105,10 @@ func (db *DB) ExtendedErrCode() sqliteh.Code {
 
 func (db *DB) LastInsertRowid() int64 {
 	return int64(C.sqlite3_last_insert_rowid(db.db))
+}
+
+func (db *DB) BusyTimeout(d time.Duration) {
+	C.sqlite3_busy_timeout(db.db, C.int(d/1e6))
 }
 
 func (db *DB) Prepare(query string, prepFlags sqliteh.PrepareFlags) (stmt sqliteh.Stmt, remainingQuery string, err error) {

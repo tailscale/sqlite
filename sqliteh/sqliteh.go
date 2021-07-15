@@ -7,6 +7,7 @@ package sqliteh
 
 import (
 	"sync"
+	"time"
 )
 
 // OpenFunc is sqlite3_open_v2.
@@ -41,6 +42,9 @@ type DB interface {
 	// Prepare is sqlite3_prepare_v3.
 	// https://www.sqlite.org/c3ref/prepare.html
 	Prepare(query string, prepFlags PrepareFlags) (stmt Stmt, remainingQuery string, err error)
+	// BusyTimeout is sqlite3_busy_timeout.
+	// https://www.sqlite.org/c3ref/busy_timeout.html
+	BusyTimeout(time.Duration)
 }
 
 // Stmt is an sqlite3_stmt* database connection object.
