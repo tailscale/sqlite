@@ -11,29 +11,12 @@
 // Memory Mode
 //
 // In-memory databases are popular for tests.
-// Use standard URIs to open in-memory databases, as documented
-// in the link above. E.g.
+// Use the "memdb" VFS (*not* the legacy in-memory modes) to be compatible
+// with the database/sql connection pool:
 //
-//	file:/whatever?mode=memory
+//	file:/dbname?vfs=memdb
 //
-// If opening a database in memory mode with the "?mode=memory" query
-// parameter, make sure immediately after opening to set
-//
-//	db.SetMaxOpenConns(1)
-//
-// This driver does not support shared cache mode, as the SQLite
-// authors recommend against it:
-//
-//	"Any use of shared cache is discouraged."
-//	https://www.sqlite.org/c3ref/enable_shared_cache.html
-//
-// For far more realistic in-memory database testing, use
-//
-//	PRAGMA journal_mode=WAL;
-//	PRAGMA synchronous=OFF;
-//
-// On any modern OS, this will generate syscalls as part of writing
-// data, but will never block on I/O.
+// Use a different dbname for each memory database opened.
 //
 //
 // Binding Types
