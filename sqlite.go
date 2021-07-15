@@ -287,10 +287,11 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return nil, s.reserr("Stmt.Query(Reset)", err)
 	}
 	if err := s.bindAll(args); err != nil {
-		return nil, err
+		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
 	row, lastInsertRowID, changes, err := s.stmt.StepResult()
 	s.bound = false // StepResult resets the query
+	err = s.reserr("Stmt.Exec", err)
 	if err != nil {
 		return nil, err
 	}
@@ -508,7 +509,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 	hasRow, err := r.stmt.stmt.Step()
 	if err != nil {
-		return err
+		return r.stmt.reserr("Rows.Next", err)
 	}
 	if !hasRow {
 		return io.EOF
@@ -652,7 +653,7 @@ func ExecScript(sqlconn SQLConn, queries string) error {
 			_, err = cstmt.Step()
 			cstmt.Finalize()
 			if err != nil {
-				return err
+				return reserr(c.db, "ExecScript", queries, err)
 			}
 		}
 	})

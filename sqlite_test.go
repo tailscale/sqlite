@@ -361,6 +361,61 @@ func TestWithPersist(t *testing.T) {
 	}
 }
 
+func TestErrors(t *testing.T) {
+	db := openTestDB(t)
+	exec(t, db, "CREATE TABLE t (c)")
+	exec(t, db, "INSERT INTO t (c) VALUES (1)")
+	exec(t, db, "INSERT INTO t (c) VALUES (2)")
+
+	ctx := context.Background()
+	rows, err := db.QueryContext(ctx, "SELECT c FROM t;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(t, db, "DROP TABLE t")
+	if rows.Next() {
+		t.Error("rows")
+	}
+	err = rows.Err()
+	if err == nil {
+		t.Fatal("no error")
+	}
+	// Test use of ErrMsg to elaborate on the error.
+	if want := "no such table: t"; !strings.Contains(err.Error(), want) {
+		t.Errorf("err=%v, want %q", err, want)
+	}
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ExecScript(conn, `BEGIN; NOT VALID SQL;`)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if want := `near "NOT": syntax error`; !strings.Contains(err.Error(), want) {
+		t.Errorf("err=%v, want %q", err, want)
+	}
+
+	err = ExecScript(conn, `CREATE TABLE t (c INTEGER PRIMARY KEY);
+		INSERT INTO t (c) VALUES (1);
+		INSERT INTO t (c) VALUES (1);`)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if want := `UNIQUE constraint failed: t.c`; !strings.Contains(err.Error(), want) {
+		t.Errorf("err=%v, want %q", err, want)
+	}
+
+	_, err = conn.ExecContext(ctx, "INSERT INTO t (c) VALUES (1);")
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if want := `Stmt.Exec: SQLITE_CONSTRAINT: UNIQUE constraint failed: t.c`; !strings.Contains(err.Error(), want) {
+		t.Errorf("err=%v, want %q", err, want)
+	}
+}
+
 func BenchmarkPersist(b *testing.B) {
 	ctx := context.Background()
 	db := openTestDB(b)
