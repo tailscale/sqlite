@@ -117,10 +117,7 @@ type connector struct {
 
 func (c *connector) Driver() driver.Driver { return drv{} }
 func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
-	flags := sqliteh.SQLITE_OPEN_URI |
-		sqliteh.SQLITE_OPEN_READWRITE |
-		sqliteh.SQLITE_OPEN_CREATE
-	db, err := Open(c.name, flags, "")
+	db, err := Open(c.name, sqliteh.OpenFlagsDefault, "")
 	if err != nil {
 		if ec, ok := err.(sqliteh.ErrCode); ok {
 			e := &Error{
