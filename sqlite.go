@@ -152,6 +152,10 @@ type conn struct {
 func (c *conn) Prepare(query string) (driver.Stmt, error) { panic("deprecated, unused") }
 func (c *conn) Begin() (driver.Tx, error)                 { panic("deprecated, unused") }
 func (c *conn) Close() error {
+	for q, s := range c.stmts {
+		s.stmt.Finalize()
+		delete(c.stmts, q)
+	}
 	return reserr(c.db, "Conn.Close", "", c.db.Close())
 }
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
