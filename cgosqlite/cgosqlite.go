@@ -8,7 +8,7 @@ package cgosqlite
 // of the database/sql driver seems to require it.
 
 // #cgo CFLAGS: -DSQLITE_THREADSAFE=2
-// #cgo CFLAGS: -DSSQLITE_DQS=0
+// #cgo CFLAGS: -DSQLITE_DQS=0
 // #cgo CFLAGS: -DSQLITE_DEFAULT_MEMSTATUS=0
 // #cgo CFLAGS: -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1
 // #cgo CFLAGS: -DSQLITE_LIKE_DOESNT_MATCH_BLOBS
