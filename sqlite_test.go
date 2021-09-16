@@ -216,8 +216,8 @@ func TestValueConversion(t *testing.T) {
 	err := db.QueryRowContext(context.Background(), `SELECT
 		CAST(4 AS INTEGER),
 		CAST(4.0 AS FLOAT),
-		CAST("txt" AS TEXT),
-		CAST("txt" AS BLOB),
+		CAST('txt' AS TEXT),
+		CAST('txt' AS BLOB),
 		NULL`).Scan(&cInt, &cFloat, &cText, &cBlob, &cNull)
 	if err != nil {
 		t.Fatal(err)
