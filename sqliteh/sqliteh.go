@@ -45,6 +45,8 @@ type DB interface {
 	// BusyTimeout is sqlite3_busy_timeout.
 	// https://www.sqlite.org/c3ref/busy_timeout.html
 	BusyTimeout(time.Duration)
+	// Checkpoint is sqlite3_wal_checkpoint_v2.
+	Checkpoint(db string, mode Checkpoint) (numFrames, numFramesCheckpointed int, err error)
 }
 
 // Stmt is an sqlite3_stmt* database connection object.
@@ -321,6 +323,35 @@ func (o OpenFlags) String() string {
 		}
 	}
 	return string(flags)
+}
+
+// Checkpoint is a WAL checkpoint mode.
+// It is used by sqlite3_wal_checkpoint_v2.
+//
+// https://sqlite.org/c3ref/wal_checkpoint_v2.html
+type Checkpoint int
+
+const (
+	SQLITE_CHECKPOINT_PASSIVE  Checkpoint = 0
+	SQLITE_CHECKPOINT_FULL     Checkpoint = 1
+	SQLITE_CHECKPOINT_RESTART  Checkpoint = 2
+	SQLITE_CHECKPOINT_TRUNCATE Checkpoint = 3
+)
+
+func (mode Checkpoint) String() string {
+	switch mode {
+	default:
+		var buf [20]byte
+		return "SQLITE_CHECKPOINT_UNKNOWN(" + string(itoa(buf[:], int64(mode))) + ")"
+	case SQLITE_CHECKPOINT_PASSIVE:
+		return "SQLITE_CHECKPOINT_PASSIVE"
+	case SQLITE_CHECKPOINT_FULL:
+		return "SQLITE_CHECKPOINT_FULL"
+	case SQLITE_CHECKPOINT_RESTART:
+		return "SQLITE_CHECKPOINT_RESTART"
+	case SQLITE_CHECKPOINT_TRUNCATE:
+		return "SQLITE_CHECKPOINT_TRUNCATE"
+	}
 }
 
 // ErrCode is an SQLite error code as a Go error.

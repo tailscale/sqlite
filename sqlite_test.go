@@ -8,10 +8,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tailscale/sqlite/sqliteh"
 )
 
 func TestOpenDB(t *testing.T) {
@@ -407,6 +410,9 @@ func TestErrors(t *testing.T) {
 	if want := `near "NOT": syntax error`; !strings.Contains(err.Error(), want) {
 		t.Errorf("err=%v, want %q", err, want)
 	}
+	if err := ExecScript(conn, "ROLLBACK;"); err != nil { // TODO: make unnecessary?
+		t.Fatal(err)
+	}
 
 	err = ExecScript(conn, `CREATE TABLE t (c INTEGER PRIMARY KEY);
 		INSERT INTO t (c) VALUES (1);
@@ -424,6 +430,47 @@ func TestErrors(t *testing.T) {
 	}
 	if want := `Stmt.Exec: SQLITE_CONSTRAINT: UNIQUE constraint failed: t.c`; !strings.Contains(err.Error(), want) {
 		t.Errorf("err=%v, want %q", err, want)
+	}
+}
+
+func TestCheckpoint(t *testing.T) {
+	dbFile := t.TempDir() + "/test.db"
+	db, err := sql.Open("sqlite3", "file:"+dbFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ExecScript(conn, `CREATE TABLE t (c);
+		INSERT INTO t (c) VALUES (1);
+		INSERT INTO t (c) VALUES (1);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if fi, err := os.Stat(dbFile + "-wal"); err != nil {
+		t.Fatal(err)
+	} else if fi.Size() == 0 {
+		t.Fatal("WAL is empty")
+	} else {
+		t.Logf("WAL is %d bytes", fi.Size())
+	}
+
+	if _, _, err := Checkpoint(conn, "", sqliteh.SQLITE_CHECKPOINT_TRUNCATE); err != nil {
+		t.Fatal(err)
+	}
+
+	if fi, err := os.Stat(dbFile + "-wal"); err != nil {
+		t.Fatal(err)
+	} else if fi.Size() != 0 {
+		t.Fatal("WAL is not empty")
 	}
 }
 
