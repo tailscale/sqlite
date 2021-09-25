@@ -695,10 +695,39 @@ func ExecScript(sqlconn SQLConn, queries string) error {
 			_, err = cstmt.Step()
 			cstmt.Finalize()
 			if err != nil {
+				// TODO(crawshaw): consider checking sqlite3_txn_state
+				// here and issuing a rollback, incase this script was:
+				//	BEGIN; BAD-SQL; COMMIT;
+				// So we don't leave the connection open.
 				return reserr(c.db, "ExecScript", queries, err)
 			}
 		}
 	})
+}
+
+// BusyTimeout calls sqlite3_busy_timeout on the underlying connection.
+func BusyTimeout(sqlconn SQLConn, d time.Duration) error {
+	return sqlconn.Raw(func(driverConn interface{}) error {
+		c, ok := driverConn.(*conn)
+		if !ok {
+			return fmt.Errorf("sqlite.BusyTimeout: sql.Conn is not the sqlite driver: %T", driverConn)
+		}
+		c.db.BusyTimeout(d)
+		return nil
+	})
+}
+
+// Checkpoint calls sqlite3_wal_checkpoint_v2 on the underlying connection.
+func Checkpoint(sqlconn SQLConn, dbName string, mode sqliteh.Checkpoint) (numFrames, numFramesCheckpointed int, err error) {
+	err = sqlconn.Raw(func(driverConn interface{}) error {
+		c, ok := driverConn.(*conn)
+		if !ok {
+			return fmt.Errorf("sqlite.BusyTimeout: sql.Conn is not the sqlite driver: %T", driverConn)
+		}
+		numFrames, numFramesCheckpointed, err = c.db.Checkpoint(dbName, mode)
+		return reserr(c.db, "Checkpoint", dbName, err)
+	})
+	return numFrames, numFramesCheckpointed, err
 }
 
 // WithPersist makes a ctx instruct the sqlite driver to persist a prepared query.

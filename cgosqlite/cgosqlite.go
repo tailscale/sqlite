@@ -118,6 +118,19 @@ func (db *DB) BusyTimeout(d time.Duration) {
 	C.sqlite3_busy_timeout(db.db, C.int(d/1e6))
 }
 
+func (db *DB) Checkpoint(dbName string, mode sqliteh.Checkpoint) (int, int, error) {
+	var cDB *C.char
+	if dbName != "" {
+		// Docs say: "If parameter zDb is NULL or points to a zero length string",
+		// so they are equivalent here.
+		cDB = C.CString(dbName)
+		defer C.free(unsafe.Pointer(cDB))
+	}
+	var nLog, nCkpt C.int
+	res := C.sqlite3_wal_checkpoint_v2(db.db, cDB, C.int(mode), &nLog, &nCkpt)
+	return int(nLog), int(nCkpt), errCode(res)
+}
+
 func (db *DB) Prepare(query string, prepFlags sqliteh.PrepareFlags) (stmt sqliteh.Stmt, remainingQuery string, err error) {
 	csql := C.CString(query)
 	defer C.free(unsafe.Pointer(csql))
