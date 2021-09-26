@@ -717,6 +717,18 @@ func BusyTimeout(sqlconn SQLConn, d time.Duration) error {
 	})
 }
 
+// TxnState calls sqlite3_txn_state on the underlying connection.
+func TxnState(sqlconn SQLConn, schema string) (state sqliteh.TxnState, err error) {
+	return state, sqlconn.Raw(func(driverConn interface{}) error {
+		c, ok := driverConn.(*conn)
+		if !ok {
+			return fmt.Errorf("sqlite.BusyTimeout: sql.Conn is not the sqlite driver: %T", driverConn)
+		}
+		state = c.db.TxnState(schema)
+		return nil
+	})
+}
+
 // Checkpoint calls sqlite3_wal_checkpoint_v2 on the underlying connection.
 func Checkpoint(sqlconn SQLConn, dbName string, mode sqliteh.Checkpoint) (numFrames, numFramesCheckpointed int, err error) {
 	err = sqlconn.Raw(func(driverConn interface{}) error {

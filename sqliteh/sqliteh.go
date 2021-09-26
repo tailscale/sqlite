@@ -47,6 +47,8 @@ type DB interface {
 	BusyTimeout(time.Duration)
 	// Checkpoint is sqlite3_wal_checkpoint_v2.
 	Checkpoint(db string, mode Checkpoint) (numFrames, numFramesCheckpointed int, err error)
+	// TxnState is sqlite3_txn_state.
+	TxnState(schema string) TxnState
 }
 
 // Stmt is an sqlite3_stmt* database connection object.
@@ -351,6 +353,32 @@ func (mode Checkpoint) String() string {
 		return "SQLITE_CHECKPOINT_RESTART"
 	case SQLITE_CHECKPOINT_TRUNCATE:
 		return "SQLITE_CHECKPOINT_TRUNCATE"
+	}
+}
+
+// TxnState is a transaction state.
+// It is used by sqlite3_txn_state.
+//
+// https://sqlite.org/c3ref/txn_state.html
+type TxnState int
+
+const (
+	SQLITE_TXN_NONE  TxnState = 0
+	SQLITE_TXN_READ  TxnState = 1
+	SQLITE_TXN_WRITE TxnState = 2
+)
+
+func (state TxnState) String() string {
+	switch state {
+	default:
+		var buf [20]byte
+		return "SQLITE_TXN_UNKNOWN(" + string(itoa(buf[:], int64(state))) + ")"
+	case SQLITE_TXN_NONE:
+		return "SQLITE_TXN_NONE"
+	case SQLITE_TXN_READ:
+		return "SQLITE_TXN_READ"
+	case SQLITE_TXN_WRITE:
+		return "SQLITE_TXN_WRITE"
 	}
 }
 

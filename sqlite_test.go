@@ -567,6 +567,44 @@ func TestTrace(t *testing.T) {
 	expectEv(ctx, "INSERT INTO t2 (c) VALUES (1)", "UNIQUE constraint failed")
 }
 
+func TestTxnState(t *testing.T) {
+	dbFile := t.TempDir() + "/test.db"
+	db, err := sql.Open("sqlite3", "file:"+dbFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	sqlConn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state, err := TxnState(sqlConn, ""); err != nil {
+		t.Fatal(err)
+	} else if state != sqliteh.SQLITE_TXN_NONE {
+		t.Errorf("state=%v, want SQLITE_TXN_NONE", state)
+	}
+	if err := ExecScript(sqlConn, "BEGIN; CREATE TABLE t (c);"); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := TxnState(sqlConn, ""); err != nil {
+		t.Fatal(err)
+	} else if state != sqliteh.SQLITE_TXN_WRITE {
+		t.Errorf("state=%v, want SQLITE_TXN_WRITE", state)
+	}
+	if err := ExecScript(sqlConn, "COMMIT; BEGIN; SELECT * FROM (t);"); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := TxnState(sqlConn, ""); err != nil {
+		t.Fatal(err)
+	} else if state != sqliteh.SQLITE_TXN_READ {
+		t.Errorf("state=%v, want SQLITE_TXN_READ", state)
+	}
+}
+
 func BenchmarkPersist(b *testing.B) {
 	ctx := context.Background()
 	db := openTestDB(b)
