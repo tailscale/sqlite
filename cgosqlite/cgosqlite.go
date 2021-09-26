@@ -131,6 +131,15 @@ func (db *DB) Checkpoint(dbName string, mode sqliteh.Checkpoint) (int, int, erro
 	return int(nLog), int(nCkpt), errCode(res)
 }
 
+func (db *DB) TxnState(schema string) sqliteh.TxnState {
+	var cSchema *C.char
+	if schema != "" {
+		cSchema = C.CString(schema)
+		defer C.free(unsafe.Pointer(cSchema))
+	}
+	return sqliteh.TxnState(C.sqlite3_txn_state(db.db, cSchema))
+}
+
 func (db *DB) Prepare(query string, prepFlags sqliteh.PrepareFlags) (stmt sqliteh.Stmt, remainingQuery string, err error) {
 	csql := C.CString(query)
 	defer C.free(unsafe.Pointer(csql))
