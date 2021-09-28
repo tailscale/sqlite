@@ -147,8 +147,26 @@ func (p *connector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, fmt.Errorf("sqlite.Open: wal_autocheckpoint: %w", err)
 	}
 
+	if err := pragmaSynchronousNormal(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("sqlite.open: %w", err)
+	}
+
 	c := &conn{db: db, traceFunc: p.traceFunc}
 	return c, nil
+}
+
+func pragmaSynchronousNormal(db sqliteh.DB) error {
+	const query = "PRAGMA synchronous=NORMAL;"
+	cstmt, _, err := db.Prepare(query, 0)
+	if err != nil {
+		return reserr(db, "Open", query, err)
+	}
+	defer cstmt.Finalize()
+	if _, _, _, _, err := cstmt.StepResult(); err != nil {
+		return reserr(db, "Open", query, err)
+	}
+	return nil
 }
 
 type conn struct {
