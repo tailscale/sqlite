@@ -120,9 +120,9 @@ type connector struct {
 	traceFunc TraceFunc
 }
 
-func (c *connector) Driver() driver.Driver { return drv{} }
-func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
-	db, err := Open(c.name, sqliteh.OpenFlagsDefault, "")
+func (p *connector) Driver() driver.Driver { return drv{} }
+func (p *connector) Connect(ctx context.Context) (driver.Conn, error) {
+	db, err := Open(p.name, sqliteh.OpenFlagsDefault, "")
 	if err != nil {
 		if ec, ok := err.(sqliteh.ErrCode); ok {
 			e := &Error{
@@ -139,8 +139,16 @@ func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 		}
 		return nil, err
 	}
+
 	db.BusyTimeout(2 * time.Second) // TODO: justify choice; make configurable?
-	return &conn{db: db, traceFunc: c.traceFunc}, nil
+
+	if err := db.AutoCheckpoint(0); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("sqlite.Open: wal_autocheckpoint: %w", err)
+	}
+
+	c := &conn{db: db, traceFunc: p.traceFunc}
+	return c, nil
 }
 
 type conn struct {
@@ -722,7 +730,7 @@ func TxnState(sqlconn SQLConn, schema string) (state sqliteh.TxnState, err error
 	return state, sqlconn.Raw(func(driverConn interface{}) error {
 		c, ok := driverConn.(*conn)
 		if !ok {
-			return fmt.Errorf("sqlite.BusyTimeout: sql.Conn is not the sqlite driver: %T", driverConn)
+			return fmt.Errorf("sqlite.TxnState: sql.Conn is not the sqlite driver: %T", driverConn)
 		}
 		state = c.db.TxnState(schema)
 		return nil
@@ -734,7 +742,7 @@ func Checkpoint(sqlconn SQLConn, dbName string, mode sqliteh.Checkpoint) (numFra
 	err = sqlconn.Raw(func(driverConn interface{}) error {
 		c, ok := driverConn.(*conn)
 		if !ok {
-			return fmt.Errorf("sqlite.BusyTimeout: sql.Conn is not the sqlite driver: %T", driverConn)
+			return fmt.Errorf("sqlite.Checkpoint: sql.Conn is not the sqlite driver: %T", driverConn)
 		}
 		numFrames, numFramesCheckpointed, err = c.db.Checkpoint(dbName, mode)
 		return reserr(c.db, "Checkpoint", dbName, err)

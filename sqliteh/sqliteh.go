@@ -47,6 +47,9 @@ type DB interface {
 	BusyTimeout(time.Duration)
 	// Checkpoint is sqlite3_wal_checkpoint_v2.
 	Checkpoint(db string, mode Checkpoint) (numFrames, numFramesCheckpointed int, err error)
+	// AutoCheckpoint is sqlite3_wal_autocheckpoint.
+	// https://sqlite.org/c3ref/wal_autocheckpoint.html
+	AutoCheckpoint(n int) error
 	// TxnState is sqlite3_txn_state.
 	TxnState(schema string) TxnState
 }

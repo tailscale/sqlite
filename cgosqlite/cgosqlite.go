@@ -131,6 +131,11 @@ func (db *DB) Checkpoint(dbName string, mode sqliteh.Checkpoint) (int, int, erro
 	return int(nLog), int(nCkpt), errCode(res)
 }
 
+func (db *DB) AutoCheckpoint(n int) error {
+	res := C.sqlite3_wal_autocheckpoint(db.db, C.int(n))
+	return errCode(res)
+}
+
 func (db *DB) TxnState(schema string) sqliteh.TxnState {
 	var cSchema *C.char
 	if schema != "" {
