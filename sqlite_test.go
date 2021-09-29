@@ -317,6 +317,7 @@ func TestExecScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 	err = ExecScript(conn, `BEGIN;
 		CREATE TABLE t (c);
 		INSERT INTO t VALUES ('a');
@@ -404,6 +405,7 @@ func TestErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 	err = ExecScript(conn, `BEGIN; NOT VALID SQL;`)
 	if err == nil {
 		t.Fatal("no error")
@@ -440,6 +442,7 @@ func TestCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer db.Close()
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		t.Fatal(err)
 	}
@@ -449,6 +452,7 @@ func TestCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 	err = ExecScript(conn, `CREATE TABLE t (c);
 		INSERT INTO t (c) VALUES (1);
 		INSERT INTO t (c) VALUES (1);`)
@@ -574,6 +578,7 @@ func TestTxnState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer db.Close()
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		t.Fatal(err)
 	}
@@ -583,6 +588,7 @@ func TestTxnState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer sqlConn.Close()
 	if state, err := TxnState(sqlConn, ""); err != nil {
 		t.Fatal(err)
 	} else if state != sqliteh.SQLITE_TXN_NONE {
@@ -616,6 +622,7 @@ func TestConnInit(t *testing.T) {
 			return err
 		}
 		_, err = stmt.(driver.StmtExecContext).ExecContext(ctx, nil)
+		stmt.Close()
 		return err
 	}
 	db := sql.OpenDB(Connector(uri, connInitFunc, nil))
