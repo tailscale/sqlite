@@ -617,13 +617,7 @@ func TestConnInit(t *testing.T) {
 	uri := "file:" + t.TempDir() + "/test.db"
 	connInitFunc := func(ctx context.Context, conn driver.ConnPrepareContext) error {
 		called++
-		stmt, err := conn.PrepareContext(ctx, "PRAGMA journal_mode=WAL;")
-		if err != nil {
-			return err
-		}
-		_, err = stmt.(driver.StmtExecContext).ExecContext(ctx, nil)
-		stmt.Close()
-		return err
+		return ExecScript(conn.(SQLConn), "PRAGMA journal_mode=WAL;")
 	}
 	db := sql.OpenDB(Connector(uri, connInitFunc, nil))
 	conn, err := db.Conn(context.Background())

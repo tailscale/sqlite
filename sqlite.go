@@ -14,13 +14,7 @@
 // tracing, use the Connector function:
 //
 //	connInitFunc := func(ctx context.Context, conn driver.ConnPrepareContext) error {
-//		called++
-//		stmt, err := conn.PrepareContext(ctx, "PRAGMA journal_mode=WAL;")
-//		if err != nil {
-//			return err
-//		}
-//		_, err = stmt.(driver.StmtExecContext).ExecContext(ctx, nil)
-//		return err
+//		return sqlite.ExecScript(conn.(sqlite.SQLConn), "PRAGMA journal_mode=WAL;")
 //	}
 //	db, err = sql.OpenDB(sqlite.Connector(sqliteURI, connInitFunc, nil))
 //
@@ -112,7 +106,7 @@ type TraceFunc func(prepCtx context.Context, query string, duration time.Duratio
 
 // ConnInitFunc is a function called by the driver on new connections.
 //
-// The conn can be used to execute queries.
+// The conn can be used to execute queries, and implements SQLConn.
 // Any error return closes the conn and passes the error to database/sql.
 type ConnInitFunc func(ctx context.Context, conn driver.ConnPrepareContext) error
 
@@ -278,6 +272,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	}
 	return &connTx{c: c}, nil
 }
+
+// Raw is so ConnInitFunc can cast to SQLConn.
+func (c *conn) Raw(fn func(interface{}) error) error { return fn(c) }
 
 type connTx struct {
 	c *conn
