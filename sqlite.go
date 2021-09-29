@@ -8,6 +8,23 @@
 // For details see https://sqlite.org/c3ref/open.html#urifilenames.
 //
 //
+// Initializing connections or tracing
+//
+// If you want to do initial configuration of a connection, or enable
+// tracing, use the Connector function:
+//
+//	connInitFunc := func(ctx context.Context, conn driver.ConnPrepareContext) error {
+//		called++
+//		stmt, err := conn.PrepareContext(ctx, "PRAGMA journal_mode=WAL;")
+//		if err != nil {
+//			return err
+//		}
+//		_, err = stmt.(driver.StmtExecContext).ExecContext(ctx, nil)
+//		return err
+//	}
+//	db, err = sql.OpenDB(sqlite.Connector(sqliteURI, connInitFunc, nil))
+//
+//
 // Memory Mode
 //
 // In-memory databases are popular for tests.
@@ -93,6 +110,12 @@ var Open sqliteh.OpenFunc = func(string, sqliteh.OpenFlags, string) (sqliteh.DB,
 // code between calls to rows.Next.
 type TraceFunc func(prepCtx context.Context, query string, duration time.Duration, err error)
 
+// ConnInitFunc is a function called by the driver on new connections.
+//
+// The conn can be used to execute queries.
+// Any error return closes the conn and passes the error to database/sql.
+type ConnInitFunc func(ctx context.Context, conn driver.ConnPrepareContext) error
+
 // TimeFormat is the string format this driver uses to store
 // microsecond-precision time in SQLite in text format.
 const TimeFormat = "2006-01-02 15:04:05.000-0700"
@@ -108,16 +131,18 @@ func (d drv) OpenConnector(name string) (driver.Connector, error) {
 	return &connector{name: name}, nil
 }
 
-func Connector(sqliteURI string, traceFunc TraceFunc) driver.Connector {
+func Connector(sqliteURI string, connInitFunc ConnInitFunc, traceFunc TraceFunc) driver.Connector {
 	return &connector{
-		name:      sqliteURI,
-		traceFunc: traceFunc,
+		name:         sqliteURI,
+		traceFunc:    traceFunc,
+		connInitFunc: connInitFunc,
 	}
 }
 
 type connector struct {
-	name      string
-	traceFunc TraceFunc
+	name         string
+	traceFunc    TraceFunc
+	connInitFunc ConnInitFunc
 }
 
 func (p *connector) Driver() driver.Driver { return drv{} }
@@ -140,33 +165,14 @@ func (p *connector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, err
 	}
 
-	db.BusyTimeout(2 * time.Second) // TODO: justify choice; make configurable?
-
-	if err := db.AutoCheckpoint(0); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("sqlite.Open: wal_autocheckpoint: %w", err)
-	}
-
-	if err := pragmaSynchronousNormal(db); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("sqlite.open: %w", err)
-	}
-
 	c := &conn{db: db, traceFunc: p.traceFunc}
+	if p.connInitFunc != nil {
+		if err := p.connInitFunc(ctx, c); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("sqlite.ConnInitFunc: %w", err)
+		}
+	}
 	return c, nil
-}
-
-func pragmaSynchronousNormal(db sqliteh.DB) error {
-	const query = "PRAGMA synchronous=NORMAL;"
-	cstmt, _, err := db.Prepare(query, 0)
-	if err != nil {
-		return reserr(db, "Open", query, err)
-	}
-	defer cstmt.Finalize()
-	if _, _, _, _, err := cstmt.StepResult(); err != nil {
-		return reserr(db, "Open", query, err)
-	}
-	return nil
 }
 
 type conn struct {

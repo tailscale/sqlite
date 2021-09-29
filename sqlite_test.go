@@ -7,6 +7,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"os"
 	"runtime"
@@ -65,7 +66,7 @@ func openTestDB(t testing.TB) *sql.DB {
 
 func openTestDBTrace(t testing.TB, traceFunc TraceFunc) *sql.DB {
 	t.Helper()
-	db := sql.OpenDB(Connector("file:"+t.TempDir()+"/test.db", traceFunc))
+	db := sql.OpenDB(Connector("file:"+t.TempDir()+"/test.db", nil, traceFunc))
 	configDB(t, db)
 	return db
 }
@@ -603,6 +604,30 @@ func TestTxnState(t *testing.T) {
 	} else if state != sqliteh.SQLITE_TXN_READ {
 		t.Errorf("state=%v, want SQLITE_TXN_READ", state)
 	}
+}
+
+func TestConnInit(t *testing.T) {
+	called := 0
+	uri := "file:" + t.TempDir() + "/test.db"
+	connInitFunc := func(ctx context.Context, conn driver.ConnPrepareContext) error {
+		called++
+		stmt, err := conn.PrepareContext(ctx, "PRAGMA journal_mode=WAL;")
+		if err != nil {
+			return err
+		}
+		_, err = stmt.(driver.StmtExecContext).ExecContext(ctx, nil)
+		return err
+	}
+	db := sql.OpenDB(Connector(uri, connInitFunc, nil))
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called == 0 {
+		t.Fatal("called=0, want non-zero")
+	}
+	conn.Close()
+	db.Close()
 }
 
 func BenchmarkPersist(b *testing.B) {
