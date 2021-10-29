@@ -123,20 +123,25 @@ type connector struct {
 	connInitFunc ConnInitFunc
 }
 
+func errWithMsg(db sqliteh.DB, err error, loc string) error {
+	if ec, ok := err.(sqliteh.ErrCode); ok {
+		e := &Error{
+			Code: sqliteh.Code(ec),
+			Loc:  loc,
+		}
+		if db != nil {
+			e.Msg = db.ErrMsg()
+		}
+		return e
+	}
+	return err
+}
+
 func (p *connector) Driver() driver.Driver { return drv{} }
 func (p *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	db, err := Open(p.name, sqliteh.OpenFlagsDefault, "")
 	if err != nil {
-		if ec, ok := err.(sqliteh.ErrCode); ok {
-			e := &Error{
-				Code: sqliteh.Code(ec),
-				Loc:  "Open",
-			}
-			if db != nil {
-				e.Msg = db.ErrMsg()
-			}
-			err = e
-		}
+		err = errWithMsg(db, err, "Open")
 		if db != nil {
 			db.Close()
 		}
@@ -838,3 +843,35 @@ func WithPersist(ctx context.Context) context.Context {
 
 // persistQuery is used as a context value.
 type persistQuery struct{}
+
+// DB executes fn with the sqliteh.DB underlying sqlconn.
+func DB(sqlconn SQLConn, fn func(sqliteh.DB) error) error {
+	return sqlconn.Raw(func(driverConn interface{}) error {
+		c, ok := driverConn.(*conn)
+		if !ok {
+			return fmt.Errorf("sqlite.Checkpoint: sql.Conn is not the sqlite driver: %T", driverConn)
+		}
+		return fn(c.db)
+	})
+}
+
+// Backup backups the specified database from srcConn to dstConn.
+func Backup(dstConn SQLConn, dstSchema string, srcConn SQLConn, srcSchema string) error {
+	return DB(dstConn, func(dst sqliteh.DB) error {
+		return DB(srcConn, func(src sqliteh.DB) error {
+			b, err := dst.BackupInit(dstSchema, src, srcSchema)
+			if err != nil {
+				return errWithMsg(dst, err, "Backup")
+			}
+			more := true
+			for more {
+				more, err = b.Step(1024)
+				if err != nil {
+					b.Finish()
+					return errWithMsg(dst, err, "Step")
+				}
+			}
+			return errWithMsg(dst, b.Finish(), "Finish")
+		})
+	})
+}
