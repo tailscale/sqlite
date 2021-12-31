@@ -666,6 +666,97 @@ func BenchmarkEmptyExec(b *testing.B) {
 	}
 }
 
+func benchmarkSum(b *testing.B, db *sql.DB, conn *sql.Conn) {
+	ctx := context.Background()
+	if err := ExecScript(conn, "BEGIN; CREATE TABLE t (c);"); err != nil {
+		b.Fatal(err)
+	}
+	for i := 0; i < 1000; i++ {
+		if _, err := conn.ExecContext(ctx, "INSERT INTO t (c) VALUES (?)", i); err != nil {
+			b.Fatal(err)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		b.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, "VACUUM"); err != nil {
+		b.Fatal(err)
+	}
+
+	c2, err := db.Conn(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
+	ctx2, cancel := context.WithCancel(ctx)
+	go func() {
+		if _, err := c2.ExecContext(ctx, "PRAGMA busy_timeout=10000"); err != nil {
+			b.Fatal(err)
+		}
+		for {
+			if ctx2.Err() != nil {
+				break
+			}
+			if _, err := c2.ExecContext(WithPersist(ctx2), "INSERT INTO t (c) VALUES (7)"); err != nil {
+				if ctx2.Err() != nil {
+					break
+				}
+				b.Fatal(err)
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		c2.Close()
+	}()
+
+	for i := 0; i < b.N; i++ {
+		var sum int
+		if err := conn.QueryRowContext(WithPersist(ctx), "SELECT sum(c) FROM t WHERE c > 150").Scan(&sum); err != nil {
+			b.Fatal(err)
+		}
+		const want = 488175
+		if sum != want {
+			b.Fatalf("sum=%d, want %d", sum, want)
+		}
+	}
+
+	cancel()
+}
+
+func BenchmarkSum(b *testing.B) {
+	ctx := context.Background()
+	db := openTestDB(b)
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
+		b.Fatal(err)
+	}
+	benchmarkSum(b, db, conn)
+}
+
+func BenchmarkSumMmap(b *testing.B) {
+	ctx := context.Background()
+	db := openTestDB(b)
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
+		b.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, "PRAGMA mmap_size=2000000000"); err != nil {
+		b.Fatal(err)
+	}
+	var mmapSize int
+	if err := conn.QueryRowContext(WithPersist(ctx), "PRAGMA mmap_size").Scan(&mmapSize); err != nil {
+		b.Fatal(err)
+	}
+	if mmapSize <= 0 {
+		b.Fatalf("unexpected mmap_size: %d", mmapSize)
+	}
+	benchmarkSum(b, db, conn)
+}
+
 // TODO(crawshaw): test TextMarshaler
 // TODO(crawshaw): test named types
 // TODO(crawshaw): check coverage
