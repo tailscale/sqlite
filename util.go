@@ -24,7 +24,9 @@ func DropAll(ctx context.Context, conn *sql.Conn, schemaName string) (err error)
 
 	var indexes, tables, triggers, views []string
 
-	rows, err := conn.QueryContext(ctx, fmt.Sprintf("SELECT name, type FROM %q.sqlite_schema", schemaName))
+	// Filter on sql to avoid auto indexes.
+	// See https://www.sqlite.org/schematab.html for sqlite_schema docs.
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf("SELECT name, type FROM %q.sqlite_schema WHERE sql != ''", schemaName))
 	if err != nil {
 		return err
 	}
@@ -100,7 +102,9 @@ func CopyAll(ctx context.Context, conn *sql.Conn, dstSchemaName, srcSchemaName s
 	if dstSchemaName == srcSchemaName {
 		return fmt.Errorf("source matches destination: %q", srcSchemaName)
 	}
-	rows, err := conn.QueryContext(ctx, fmt.Sprintf("SELECT name, type, sql FROM %q.sqlite_schema", srcSchemaName))
+	// Filter on sql to avoid auto indexes.
+	// See https://www.sqlite.org/schematab.html for sqlite_schema docs.
+	rows, err := conn.QueryContext(ctx, fmt.Sprintf("SELECT name, type, sql FROM %q.sqlite_schema WHERE sql != ''", srcSchemaName))
 	if err != nil {
 		return err
 	}
