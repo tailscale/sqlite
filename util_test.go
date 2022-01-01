@@ -32,6 +32,9 @@ func TestDropAll(t *testing.T) {
 				WHERE cust_id=NEW.cust_id;
 		END;
 
+		-- Creates an auto-index we cannot delete.
+		CREATE TABLE "db two".textkey (key TEXT PRIMARY KEY, val INTEGER);
+
 		CREATE TABLE customer (
 			cust_id INTEGER PRIMARY KEY,
 			cust_name TEXT,
@@ -107,6 +110,10 @@ func TestCopyAll(t *testing.T) {
 		END;
 		COMMIT;
 		INSERT INTO customer (cust_id, cust_name, cust_addr) VALUES (1, 'joe', 'eldorado');
+
+		-- Creates an auto-index we should not copy.
+		CREATE TABLE textkey (key TEXT PRIMARY KEY, val INTEGER);
+
 		ATTACH 'file:s1?mode=memory' AS "db two";
 		`)
 	if err != nil {
@@ -128,7 +135,7 @@ func TestCopyAll(t *testing.T) {
 	if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM \"db two\".sqlite_schema").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 4 {
+	if count != 6 {
 		t.Fatalf("dst schema count=%d, want 4", count)
 	}
 }
