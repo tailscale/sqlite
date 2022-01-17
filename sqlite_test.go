@@ -666,6 +666,28 @@ func BenchmarkEmptyExec(b *testing.B) {
 	}
 }
 
+func BenchmarkBeginTxNoop(b *testing.B) {
+	ctx := context.Background()
+	db := openTestDB(b)
+	for i := 0; i < b.N; i++ {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := tx.Rollback(); err != nil {
+			b.Fatal(err)
+		}
+
+		tx, err = db.BeginTx(ctx, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 // TODO(crawshaw): test TextMarshaler
 // TODO(crawshaw): test named types
 // TODO(crawshaw): check coverage
