@@ -169,10 +169,19 @@ func (p *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	return c, nil
 }
 
+type txState int
+
+const (
+	txStateNone  = txState(0) // connection is not connected to a Tx
+	txStateInit  = txState(1) // BeginTx called, but "BEGIN;" not yet executed
+	txStateBegun = txState(2) // "BEGIN;" has been executed
+)
+
 type conn struct {
 	db        sqliteh.DB
 	traceFunc TraceFunc
 	stmts     map[string]*stmt // persisted statements
+	txState   txState
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) { panic("deprecated, unused") }
@@ -223,7 +232,7 @@ func (c *conn) prepare(ctx context.Context, query string, persist bool) (s *stmt
 		}
 	}
 	s = &stmt{
-		db:        c.db,
+		conn:      c,
 		stmt:      cstmt,
 		query:     query,
 		traceFunc: c.traceFunc,
@@ -267,9 +276,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 		// TODO: match the state of the connection.
 		//return nil, errors.New("github.com/tailscale/sqlite driver does not support read-only Tx yet")
 	}
-	if err := c.execInternal(ctx, "BEGIN"); err != nil {
-		return nil, err
-	}
+	c.txState = txStateInit
 	return &connTx{c: c}, nil
 }
 
@@ -281,11 +288,21 @@ type connTx struct {
 }
 
 func (tx *connTx) Commit() error {
-	return tx.c.execInternal(context.Background(), "COMMIT")
+	state := tx.c.txState
+	tx.c.txState = txStateNone
+	if state == txStateBegun {
+		return tx.c.execInternal(context.Background(), "COMMIT")
+	}
+	return nil
 }
 
 func (tx *connTx) Rollback() error {
-	return tx.c.execInternal(context.Background(), "ROLLBACK")
+	state := tx.c.txState
+	tx.c.txState = txStateNone
+	if state == txStateBegun {
+		return tx.c.execInternal(context.Background(), "ROLLBACK")
+	}
+	return nil
 }
 
 func reserr(db sqliteh.DB, loc, query string, err error) error {
@@ -305,7 +322,7 @@ func reserr(db sqliteh.DB, loc, query string, err error) error {
 }
 
 type stmt struct {
-	db        sqliteh.DB
+	conn      *conn
 	stmt      sqliteh.Stmt
 	query     string
 	traceFunc TraceFunc
@@ -322,7 +339,15 @@ type stmt struct {
 	colNames     []string
 }
 
-func (s *stmt) reserr(loc string, err error) error { return reserr(s.db, loc, s.query, err) }
+func (s *stmt) reserr(loc string, err error) error { return reserr(s.conn.db, loc, s.query, err) }
+
+func (s *stmt) txInit(ctx context.Context) error {
+	if s.conn.txState != txStateInit {
+		return nil
+	}
+	s.conn.txState = txStateBegun
+	return s.conn.execInternal(ctx, "BEGIN")
+}
 
 func (s *stmt) NumInput() int {
 	if s.persist {
@@ -344,6 +369,9 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) { panic("depreca
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error)  { panic("deprecated, unused") }
 
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	if err := s.txInit(ctx); err != nil {
+		return nil, err
+	}
 	if err := s.resetAndClear(); err != nil {
 		return nil, s.reserr("Stmt.Exec(Reset)", err)
 	}
@@ -372,6 +400,9 @@ func (res stmtResult) LastInsertId() (int64, error) { return res.lastInsertID, n
 func (res stmtResult) RowsAffected() (int64, error) { return res.rowsAffected, nil }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if err := s.txInit(ctx); err != nil {
+		return nil, err
+	}
 	if err := s.resetAndClear(); err != nil {
 		return nil, s.reserr("Stmt.Query(Reset)", err)
 	}
