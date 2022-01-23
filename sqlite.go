@@ -182,6 +182,7 @@ type conn struct {
 	traceFunc TraceFunc
 	stmts     map[string]*stmt // persisted statements
 	txState   txState
+	readOnly  bool
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) { panic("deprecated, unused") }
@@ -272,10 +273,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	if opts.Isolation != 0 && opts.Isolation != LevelSerializable {
 		return nil, errors.New("github.com/tailscale/sqlite driver only supports serializable isolation level")
 	}
-	if opts.ReadOnly {
-		// TODO: match the state of the connection.
-		//return nil, errors.New("github.com/tailscale/sqlite driver does not support read-only Tx yet")
-	}
+	c.readOnly = opts.ReadOnly
 	c.txState = txStateInit
 	return &connTx{c: c}, nil
 }
@@ -283,26 +281,49 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 // Raw is so ConnInitFunc can cast to SQLConn.
 func (c *conn) Raw(fn func(interface{}) error) error { return fn(c) }
 
+func (c *conn) txInit(ctx context.Context) error {
+	if c.txState != txStateInit {
+		return nil
+	}
+	c.txState = txStateBegun
+	if err := c.execInternal(ctx, "BEGIN"); err != nil {
+		return err
+	}
+	if c.readOnly {
+		if err := c.execInternal(ctx, "PRAGMA query_only=true"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *conn) txEnd(ctx context.Context, endStmt string) error {
+	state, readOnly := c.txState, c.readOnly
+	c.txState = txStateNone
+	c.readOnly = false
+	if state != txStateBegun {
+		return nil
+	}
+
+	err := c.execInternal(context.Background(), endStmt)
+	if readOnly {
+		if err2 := c.execInternal(ctx, "PRAGMA query_only=false"); err == nil {
+			err = err2
+		}
+	}
+	return err
+}
+
 type connTx struct {
 	c *conn
 }
 
 func (tx *connTx) Commit() error {
-	state := tx.c.txState
-	tx.c.txState = txStateNone
-	if state == txStateBegun {
-		return tx.c.execInternal(context.Background(), "COMMIT")
-	}
-	return nil
+	return tx.c.txEnd(context.Background(), "COMMIT")
 }
 
 func (tx *connTx) Rollback() error {
-	state := tx.c.txState
-	tx.c.txState = txStateNone
-	if state == txStateBegun {
-		return tx.c.execInternal(context.Background(), "ROLLBACK")
-	}
-	return nil
+	return tx.c.txEnd(context.Background(), "ROLLBACK")
 }
 
 func reserr(db sqliteh.DB, loc, query string, err error) error {
@@ -341,14 +362,6 @@ type stmt struct {
 
 func (s *stmt) reserr(loc string, err error) error { return reserr(s.conn.db, loc, s.query, err) }
 
-func (s *stmt) txInit(ctx context.Context) error {
-	if s.conn.txState != txStateInit {
-		return nil
-	}
-	s.conn.txState = txStateBegun
-	return s.conn.execInternal(ctx, "BEGIN")
-}
-
 func (s *stmt) NumInput() int {
 	if s.persist {
 		if s.numInput == -1 {
@@ -369,7 +382,7 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) { panic("depreca
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error)  { panic("deprecated, unused") }
 
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
-	if err := s.txInit(ctx); err != nil {
+	if err := s.conn.txInit(ctx); err != nil {
 		return nil, err
 	}
 	if err := s.resetAndClear(); err != nil {
@@ -400,7 +413,7 @@ func (res stmtResult) LastInsertId() (int64, error) { return res.lastInsertID, n
 func (res stmtResult) RowsAffected() (int64, error) { return res.rowsAffected, nil }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
-	if err := s.txInit(ctx); err != nil {
+	if err := s.conn.txInit(ctx); err != nil {
 		return nil, err
 	}
 	if err := s.resetAndClear(); err != nil {

@@ -631,6 +631,56 @@ func TestConnInit(t *testing.T) {
 	db.Close()
 }
 
+func TestTxReadOnly(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("create table t (c)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("insert into t (c) values (1)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err = db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := tx.QueryRow("select count(*) from t").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("count=%d, want 1", count)
+	}
+	if _, err := tx.Exec("insert into t (c) values (1)"); err == nil {
+		t.Fatal("no error on read-only insert")
+	} else if !strings.Contains(err.Error(), "SQLITE_READONLY") {
+		t.Errorf("err does not reference SQLITE_READONLY: %v", err)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err = db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("insert into t (c) values (1)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func BenchmarkPersist(b *testing.B) {
 	ctx := context.Background()
 	db := openTestDB(b)
