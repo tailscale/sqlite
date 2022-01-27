@@ -31,6 +31,14 @@ package cgosqlite
 // #cgo linux LDFLAGS: -ldl -lm -lrt
 // #cgo linux CFLAGS: -std=c99
 //
+// // TODO(crawshaw): for some reason, I cannot get CLOCK_MONOTONIC
+// // defined properly here by cgo. My C compiler seems otherwise
+// // fine, I can compile a small C program on linux referring to
+// // CLOCK_MONOTONIC.
+// //
+// // For now, use the value directly. It's a fixed value on linux.
+// #cgo linux CFLAGS: -DCLOCK_MONOTONIC=1
+//
 // #include <stdint.h>
 // #include <stdlib.h>
 // #include <string.h>

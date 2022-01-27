@@ -29,14 +29,7 @@ static int bind_parameter_index(sqlite3_stmt* stmt, _GoString_ s) {
 }
 
 static void monotonic_clock_gettime(struct timespec* t) {
-	// TODO(crawshaw): for some reason, I cannot get CLOCK_MONOTONIC
-	// defined properly here by cgo. My C compiler seems otherwise
-	// fine, I can compile a small C program on linux referring to
-	// CLOCK_MONOTONIC.
-	// 
-	// For now, use the value directly.
-	// It is defined in POSIX so it won't change any time soon.
-	clock_gettime(1, t); // CLOCK_MONOTONIC
+	clock_gettime(CLOCK_MONOTONIC, t);
 }
 
 static int64_t ns_since(const struct timespec t1)
