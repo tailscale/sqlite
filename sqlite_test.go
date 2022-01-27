@@ -514,7 +514,11 @@ func TestTrace(t *testing.T) {
 			t.Errorf("trace: err=%v, want %v", ev.err, errSubstr)
 		}
 		if ev.duration <= 0 || ev.duration > 10*time.Minute {
-			t.Errorf("trace: improbable duration: %v", ev.duration)
+			// The macOS clock appears to low resolution and so
+			// it's common to get a duration of exactly 0s.
+			if runtime.GOOS == "darwin" && ev.duration != 0 {
+				t.Errorf("trace: improbable duration: %v", ev.duration)
+			}
 		}
 	}
 	db := openTestDBTrace(t, fn)
