@@ -516,7 +516,7 @@ func TestTrace(t *testing.T) {
 		if ev.duration <= 0 || ev.duration > 10*time.Minute {
 			// The macOS clock appears to low resolution and so
 			// it's common to get a duration of exactly 0s.
-			if runtime.GOOS == "darwin" && ev.duration != 0 {
+			if runtime.GOOS != "darwin" || ev.duration != 0 {
 				t.Errorf("trace: improbable duration: %v", ev.duration)
 			}
 		}
