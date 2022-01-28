@@ -64,9 +64,9 @@ func openTestDB(t testing.TB) *sql.DB {
 	return db
 }
 
-func openTestDBTrace(t testing.TB, traceFunc TraceFunc) *sql.DB {
+func openTestDBTrace(t testing.TB, tracer Tracer) *sql.DB {
 	t.Helper()
-	db := sql.OpenDB(Connector("file:"+t.TempDir()+"/test.db", nil, traceFunc))
+	db := sql.OpenDB(Connector("file:"+t.TempDir()+"/test.db", nil, tracer))
 	configDB(t, db)
 	return db
 }
@@ -479,21 +479,34 @@ func TestCheckpoint(t *testing.T) {
 	}
 }
 
-func TestTrace(t *testing.T) {
-	type traceEvent struct {
-		prepCtx  context.Context
-		query    string
-		duration time.Duration
-		err      error
-	}
-	evCh := make(chan traceEvent, 16)
-	fn := func(prepCtx context.Context, query string, duration time.Duration, err error) {
-		evCh <- traceEvent{prepCtx, query, duration, err}
+type queryTraceEvent struct {
+	prepCtx  context.Context
+	query    string
+	duration time.Duration
+	err      error
+}
+
+type queryTracer struct {
+	evCh chan queryTraceEvent
+}
+
+func (t *queryTracer) Query(prepCtx context.Context, id TraceConnID, query string, duration time.Duration, err error) {
+	t.evCh <- queryTraceEvent{prepCtx, query, duration, err}
+}
+func (t *queryTracer) BeginTx(_ context.Context, _ TraceConnID, _ bool, _ error) {}
+func (t *queryTracer) Commit(_ TraceConnID, _ error) {
+}
+func (t *queryTracer) Rollback(_ TraceConnID, _ error) {
+}
+
+func TestTraceQuery(t *testing.T) {
+	tracer := &queryTracer{
+		evCh: make(chan queryTraceEvent, 16),
 	}
 	type ctxKey struct{}
 	expectEv := func(srcCtx context.Context, query string, errSubstr string) {
 		t.Helper()
-		ev, ok := <-evCh
+		ev, ok := <-tracer.evCh
 		if !ok {
 			t.Fatal("trace: no event")
 		}
@@ -521,7 +534,7 @@ func TestTrace(t *testing.T) {
 			}
 		}
 	}
-	db := openTestDBTrace(t, fn)
+	db := openTestDBTrace(t, tracer)
 	noErr := ""
 	expectEv(context.Background(), "PRAGMA journal_mode=WAL", noErr) // from configDB
 	expectEv(context.Background(), "PRAGMA synchronous=OFF", noErr)
