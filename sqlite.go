@@ -81,6 +81,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/tailscale/sqlite/sqliteh"
@@ -90,19 +91,43 @@ var Open sqliteh.OpenFunc = func(string, sqliteh.OpenFlags, string) (sqliteh.DB,
 	return nil, fmt.Errorf("cgosqlite.Open is missing")
 }
 
-// TraceFunc is function called by the driver to report a completed query.
+// TraceConnID uniquely identifies an SQLite connection in this process.
 //
-// The prepCtx context is the context object provided by the user when
-// preparing or executing the statement. This can be used by the tracer
+// It is provided to the Tracer to let it associate transaction events.
+type TraceConnID int
+
+// Tracer
+//
+// Each tracer method is provided with a TraceConnID, which is a stable
+// identifier of the underlying sql connection that the event happened
+// to, which can be used to collate events.
+//
+// Some tracer methods take a ctx which is the context object
+// provided by the user to that method. This can be used by the tracer
 // to plumb through context values.
 //
-// The query string is the string the user provided to Prepare.
-// No parameters are filled in.
-//
-// The duration covers the complete execution time of the query,
-// including both time spent inside SQLite, and time spent in user
-// code between calls to rows.Next.
-type TraceFunc func(prepCtx context.Context, query string, duration time.Duration, err error)
+// Any error that occurred executing the event is reported to the
+// tracer in the err parameter. If err is not nil, the event failed.
+type Tracer interface {
+	// Query is called by the driver to report a completed query.
+	//
+	// The query string is the string the user provided to Prepare.
+	// No parameters are filled in.
+	//
+	// The duration covers the complete execution time of the query,
+	// including both time spent inside SQLite, and time spent in user
+	// code between calls to rows.Next.
+	Query(prepCtx context.Context, id TraceConnID, query string, duration time.Duration, err error)
+
+	// BeginTx is called by the driver to report the beginning of Tx.
+	BeginTx(beginCtx context.Context, id TraceConnID, readOnly bool, err error)
+
+	// Commit is called by the driver to report the end of a Tx.
+	Commit(id TraceConnID, err error)
+
+	// ROllback is called by the driver to report the end of a Tx.
+	Rollback(id TraceConnID, err error)
+}
 
 // ConnInitFunc is a function called by the driver on new connections.
 //
@@ -118,6 +143,8 @@ func init() {
 	sql.Register("sqlite3", drv{})
 }
 
+var maxConnID int32 // accessed only via sync/atomic
+
 type drv struct{}
 
 func (d drv) Open(name string) (driver.Conn, error) { panic("deprecated, unused") }
@@ -125,17 +152,17 @@ func (d drv) OpenConnector(name string) (driver.Connector, error) {
 	return &connector{name: name}, nil
 }
 
-func Connector(sqliteURI string, connInitFunc ConnInitFunc, traceFunc TraceFunc) driver.Connector {
+func Connector(sqliteURI string, connInitFunc ConnInitFunc, tracer Tracer) driver.Connector {
 	return &connector{
 		name:         sqliteURI,
-		traceFunc:    traceFunc,
+		tracer:       tracer,
 		connInitFunc: connInitFunc,
 	}
 }
 
 type connector struct {
 	name         string
-	traceFunc    TraceFunc
+	tracer       Tracer
 	connInitFunc ConnInitFunc
 }
 
@@ -159,7 +186,11 @@ func (p *connector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, err
 	}
 
-	c := &conn{db: db, traceFunc: p.traceFunc}
+	c := &conn{
+		db:     db,
+		tracer: p.tracer,
+		id:     TraceConnID(atomic.AddInt32(&maxConnID, 1)),
+	}
 	if p.connInitFunc != nil {
 		if err := p.connInitFunc(ctx, c); err != nil {
 			db.Close()
@@ -178,11 +209,12 @@ const (
 )
 
 type conn struct {
-	db        sqliteh.DB
-	traceFunc TraceFunc
-	stmts     map[string]*stmt // persisted statements
-	txState   txState
-	readOnly  bool
+	db       sqliteh.DB
+	id       TraceConnID
+	tracer   Tracer
+	stmts    map[string]*stmt // persisted statements
+	txState  txState
+	readOnly bool
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) { panic("deprecated, unused") }
@@ -205,13 +237,13 @@ func (c *conn) prepare(ctx context.Context, query string, persist bool) (s *stmt
 		s.prepCtx = ctx
 		return s, nil
 	}
-	if c.traceFunc != nil {
+	if c.tracer != nil {
 		// Not a hot path. Any high-load environment should use
 		// WithPersist so this is rare.
 		start := time.Now()
 		defer func() {
 			if err != nil {
-				c.traceFunc(ctx, query, time.Since(start), err)
+				c.tracer.Query(ctx, c.id, query, time.Since(start), err)
 			}
 		}()
 	}
@@ -233,13 +265,12 @@ func (c *conn) prepare(ctx context.Context, query string, persist bool) (s *stmt
 		}
 	}
 	s = &stmt{
-		conn:      c,
-		stmt:      cstmt,
-		query:     query,
-		traceFunc: c.traceFunc,
-		persist:   persist,
-		numInput:  -1,
-		prepCtx:   ctx,
+		conn:     c,
+		stmt:     cstmt,
+		query:    query,
+		persist:  persist,
+		numInput: -1,
+		prepCtx:  ctx,
 	}
 
 	if !persist {
@@ -275,7 +306,10 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	}
 	c.readOnly = opts.ReadOnly
 	c.txState = txStateInit
-	return &connTx{c: c}, nil
+	if c.tracer != nil {
+		c.tracer.BeginTx(ctx, c.id, c.readOnly, nil)
+	}
+	return &connTx{conn: c}, nil
 }
 
 // Raw is so ConnInitFunc can cast to SQLConn.
@@ -315,15 +349,23 @@ func (c *conn) txEnd(ctx context.Context, endStmt string) error {
 }
 
 type connTx struct {
-	c *conn
+	conn *conn
 }
 
 func (tx *connTx) Commit() error {
-	return tx.c.txEnd(context.Background(), "COMMIT")
+	err := tx.conn.txEnd(context.Background(), "COMMIT")
+	if tx.conn.tracer != nil {
+		tx.conn.tracer.Commit(tx.conn.id, err)
+	}
+	return err
 }
 
 func (tx *connTx) Rollback() error {
-	return tx.c.txEnd(context.Background(), "ROLLBACK")
+	err := tx.conn.txEnd(context.Background(), "ROLLBACK")
+	if tx.conn.tracer != nil {
+		tx.conn.tracer.Rollback(tx.conn.id, err)
+	}
+	return err
 }
 
 func reserr(db sqliteh.DB, loc, query string, err error) error {
@@ -343,12 +385,11 @@ func reserr(db sqliteh.DB, loc, query string, err error) error {
 }
 
 type stmt struct {
-	conn      *conn
-	stmt      sqliteh.Stmt
-	query     string
-	traceFunc TraceFunc
-	persist   bool // true if stmt is cached and lives beyond Close
-	bound     bool // true if stmt has parameters bound
+	conn    *conn
+	stmt    sqliteh.Stmt
+	query   string
+	persist bool // true if stmt is cached and lives beyond Close
+	bound   bool // true if stmt has parameters bound
 
 	numInput int // filled on first NumInput only if persist==true
 
@@ -394,8 +435,8 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	row, lastInsertRowID, changes, duration, err := s.stmt.StepResult()
 	s.bound = false // StepResult resets the query
 	err = s.reserr("Stmt.Exec", err)
-	if s.traceFunc != nil {
-		s.traceFunc(s.prepCtx, s.query, duration, err)
+	if s.conn.tracer != nil {
+		s.conn.tracer.Query(s.prepCtx, s.conn.id, s.query, duration, err)
 	}
 	if err != nil {
 		return nil, err
@@ -431,8 +472,8 @@ func (s *stmt) resetAndClear() error {
 	}
 	s.bound = false
 	duration, err := s.stmt.ResetAndClear()
-	if s.traceFunc != nil {
-		s.traceFunc(s.prepCtx, s.query, duration, err)
+	if s.conn.tracer != nil {
+		s.conn.tracer.Query(s.prepCtx, s.conn.id, s.query, duration, err)
 	}
 	return err
 }
@@ -442,7 +483,7 @@ func (s *stmt) bindAll(args []driver.NamedValue) error {
 		panic("sqlite: impossible state, query already running: " + s.query)
 	}
 	s.bound = true
-	if s.traceFunc != nil {
+	if s.conn.tracer != nil {
 		s.stmt.StartTimer()
 	}
 	for _, arg := range args {
