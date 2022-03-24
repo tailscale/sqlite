@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -695,6 +696,86 @@ func TestTxReadOnly(t *testing.T) {
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestAttachOrderingDeadlock fails if transactions use SQLite's default
+// BEGIN DEFERRED semantics, as the two databases locks are acquired in
+// the wrong order. This tests that BEGIN IMMEDIATE resolves this.
+func TestAttachOrderingDeadlock(t *testing.T) {
+	ctx := context.Background()
+	tmpdir := t.TempDir()
+	db := sql.OpenDB(Connector("file:"+tmpdir+"/test.db", func(ctx context.Context, conn driver.ConnPrepareContext) error {
+		c := conn.(SQLConn)
+		err := ExecScript(c, `
+			ATTACH DATABASE "file:`+tmpdir+`/test2.db" AS attached;
+			PRAGMA busy_timeout=10000;
+			PRAGMA main.journal_mode=WAL;
+			PRAGMA attached.journal_mode=WAL;
+			CREATE TABLE IF NOT EXISTS main.m1 (c);
+			CREATE TABLE IF NOT EXISTS main.m2 (c);
+			CREATE TABLE IF NOT EXISTS attached.a1 (c);
+			CREATE TABLE IF NOT EXISTS attached.a2 (c);
+
+		`)
+		if err != nil {
+			return err
+		}
+		return nil
+	}, nil))
+	defer db.Close()
+
+	// Prime the connections.
+	const numConcurrent = 10
+	db.SetMaxOpenConns(numConcurrent)
+	db.SetMaxIdleConns(numConcurrent)
+	db.SetConnMaxLifetime(0)
+	db.SetConnMaxIdleTime(0)
+	var conns []*sql.Conn
+	for i := 0; i < numConcurrent; i++ {
+		c, err := db.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		conns = append(conns, c)
+	}
+	for _, c := range conns {
+		c.Close()
+	}
+
+	lockTables := func(name string, tables ...string) {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer tx.Rollback()
+
+		for _, table := range tables {
+			// Read from and write to the same table to lock it.
+			_, err := tx.ExecContext(WithPersist(ctx), `INSERT INTO `+table+` SELECT * FROM `+table+` LIMIT 0`)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	// The following goroutines write to the main and noise databases in
+	// a different order. This should not result in a deadlock.
+	for i := 0; i < numConcurrent; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			lockTables("main-then-attached", "main.m1", "attached.a1")
+		}()
+		go func() {
+			defer wg.Done()
+			lockTables("attached-then-main", "attached.a2", "main.m2")
+		}()
 	}
 }
 

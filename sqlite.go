@@ -320,11 +320,17 @@ func (c *conn) txInit(ctx context.Context) error {
 		return nil
 	}
 	c.txState = txStateBegun
-	if err := c.execInternal(ctx, "BEGIN"); err != nil {
-		return err
-	}
 	if c.readOnly {
+		if err := c.execInternal(ctx, "BEGIN"); err != nil {
+			return err
+		}
 		if err := c.execInternal(ctx, "PRAGMA query_only=true"); err != nil {
+			return err
+		}
+	} else {
+		// TODO(crawshaw): offer BEGIN DEFERRED (and BEGIN CONCURRENT?)
+		// semantics via a context annotation function.
+		if err := c.execInternal(ctx, "BEGIN IMMEDIATE"); err != nil {
 			return err
 		}
 	}
