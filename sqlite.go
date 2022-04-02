@@ -309,6 +309,9 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	if c.tracer != nil {
 		c.tracer.BeginTx(ctx, c.id, c.readOnly, nil)
 	}
+	if err := c.txInit(ctx); err != nil {
+		return nil, err
+	}
 	return &connTx{conn: c}, nil
 }
 
@@ -429,9 +432,6 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) { panic("depreca
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error)  { panic("deprecated, unused") }
 
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
-	if err := s.conn.txInit(ctx); err != nil {
-		return nil, err
-	}
 	if err := s.resetAndClear(); err != nil {
 		return nil, s.reserr("Stmt.Exec(Reset)", err)
 	}
@@ -460,9 +460,6 @@ func (res stmtResult) LastInsertId() (int64, error) { return res.lastInsertID, n
 func (res stmtResult) RowsAffected() (int64, error) { return res.rowsAffected, nil }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
-	if err := s.conn.txInit(ctx); err != nil {
-		return nil, err
-	}
 	if err := s.resetAndClear(); err != nil {
 		return nil, s.reserr("Stmt.Query(Reset)", err)
 	}
