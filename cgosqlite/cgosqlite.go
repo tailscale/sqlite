@@ -28,8 +28,14 @@ package cgosqlite
 // #cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA
 // #cgo CFLAGS: -DSQLITE_ENABLE_STAT4
 // #cgo CFLAGS: -DHAVE_USLEEP=1
-// #cgo linux LDFLAGS: -ldl -lm -lrt
+// #cgo linux,!android LDFLAGS: -ldl -lm -lrt
 // #cgo linux CFLAGS: -std=c99
+//
+// // On Android, unlike Linux, there are no separate libpthread or librt
+// // libraries. That functionality is included directly in libc, which does not
+// // need to be explicitly linked against. See
+// // https://developer.android.com/ndk/guides/stable_apis#c_library.
+// #cgo android LDFLAGS: -ldl -lm
 //
 // // TODO(crawshaw): for some reason, I cannot get CLOCK_MONOTONIC
 // // defined properly here by cgo. My C compiler seems otherwise
