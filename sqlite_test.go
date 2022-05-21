@@ -312,6 +312,34 @@ func TestEmptyString(t *testing.T) {
 	}
 }
 
+func TestNilAndEmptyByteSlices(t *testing.T) {
+	db := openTestDB(t)
+	if _, err := db.Exec(`CREATE TABLE t(v TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range [...]struct {
+		val     []byte
+		notNull bool
+	}{
+		{[]byte{}, true},
+		{nil, false},
+	} {
+		if _, err := db.Exec(`DELETE FROM t`); err != nil {
+			t.Fatalf("emptying the table: %v", err)
+		}
+		if _, err := db.Exec(`INSERT INTO t(v) VALUES(?)`, c.val); err != nil {
+			t.Fatal(err)
+		}
+		var res sql.NullString
+		if err := db.QueryRow(`SELECT v FROM t LIMIT 1`).Scan(&res); err != nil {
+			t.Fatalf("reading result for original value of %#v: %v", c.val, err)
+		}
+		if res.Valid != c.notNull {
+			t.Fatalf("got unexpected result %#v for original value of %#v", res, c.val)
+		}
+	}
+}
+
 func TestExecScript(t *testing.T) {
 	db := openTestDB(t)
 	conn, err := db.Conn(context.Background())

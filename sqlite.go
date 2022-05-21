@@ -600,6 +600,9 @@ func (s *stmt) bindBasic(debugName interface{}, ordinal int, v interface{}) (fou
 	case float64:
 		return true, s.stmt.BindDouble(ordinal, v)
 	case []byte:
+		if v == nil {
+			return true, s.stmt.BindNull(ordinal)
+		}
 		if len(v) == 0 {
 			return true, s.stmt.BindZeroBlob64(ordinal, 0)
 		} else {
