@@ -54,6 +54,7 @@ package cgosqlite
 // #include "cgosqlite.h"
 import "C"
 import (
+	"sync"
 	"time"
 	"unsafe"
 
@@ -318,13 +319,46 @@ func (stmt *Stmt) ColumnName(col int) string {
 	return C.GoString(C.sqlite3_column_name(stmt.stmt, C.int(col)))
 }
 
+// Keep a copy of all column names ever seen in memory to avoid allocating them
+// on future queries.
+var (
+	colNamesMu     sync.RWMutex
+	colNamesIntern = map[string]string{}
+)
+
+// slice is golang.org/x/sys/internal/unsafeheader.Slice
+// (It's like reflect.SliceHeader but correctly typed)
+type slice struct {
+	Data unsafe.Pointer
+	Len  int
+	Cap  int
+}
+
 func (stmt *Stmt) ColumnText(col int) string {
 	str := (*C.char)(unsafe.Pointer(C.sqlite3_column_text(stmt.stmt, C.int(col))))
 	n := C.sqlite3_column_bytes(stmt.stmt, C.int(col))
 	if str == nil || n == 0 {
 		return ""
 	}
-	return C.GoStringN(str, n)
+	var colBytes []byte
+	hdr := (*slice)(unsafe.Pointer(&colBytes))
+	hdr.Data = unsafe.Pointer(str)
+	hdr.Len = int(n)
+	hdr.Cap = int(n)
+
+	colNamesMu.RLock()
+	s, ok := colNamesIntern[string(colBytes)] // alloc free (recognized by compiler)
+	colNamesMu.RUnlock()
+	if ok {
+		// Common fast path; we've seen this column name before.
+		return s
+	}
+
+	colName := C.GoStringN(str, n)
+	colNamesMu.Lock()
+	defer colNamesMu.Unlock()
+	colNamesIntern[colName] = colName
+	return colName
 }
 
 func (stmt *Stmt) ColumnBlob(col int) []byte {
