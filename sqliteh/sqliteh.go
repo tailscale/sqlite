@@ -84,7 +84,7 @@ type Stmt interface {
 	// Step is sqlite3_step.
 	// 	For SQLITE_ROW, Step returns (true, nil).
 	// 	For SQLITE_DONE, Step returns (false, nil).
-	// 	For any error, Step retursn (false, err).
+	// 	For any error, Step returns (false, err).
 	// https://www.sqlite.org/c3ref/step.html
 	Step() (row bool, err error)
 	// StepResult executes a one-row query and resets the statment:
