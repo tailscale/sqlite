@@ -1,0 +1,7 @@
+github.com/google/go-cmp v0.5.7 h1:81/ik6ipDQS2aGcBfIN5dHDB36BwrStyeAQquSYCV4o=
+github.com/google/go-cmp v0.5.7/go.mod h1:n+brtR0CgQNWTVd5ZUFpTBC8YFBDLK/h/bpaJ8/DtOE=
+go4.org/mem v0.0.0-20210711025021-927187094b94 h1:OAAkygi2Js191AJP1Ds42MhJRgeofeKGjuoUqNp1QC4=
+go4.org/mem v0.0.0-20210711025021-927187094b94/go.mod h1:reUoABIJ9ikfM5sgtSF3Wushcza7+WeD01VB9Lirh3g=
+golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+tailscale.com v1.24.2 h1:xNqEMKLHjqKwKUlggL2QEt1B+oit08w3SwZEIWCmqTg=
+tailscale.com v1.24.2/go.mod h1:/z/lF98LSt9CjpwVT6pHh5Vwb1NGsM5/ACI4cLMJfvY=
