@@ -119,14 +119,16 @@ func (t *Tracer) Handle(w http.ResponseWriter, r *http.Request) {
 	<th><a href="?sort=query">Query</a></th>
 	<th><a href="?sort=count">Count</a></th>
 	<th><a href="?sort=duration">Duration</a></th>
+	<th><a href="?sort=mean">Mean</a></th>
 	<th><a href="?sort=errors">Errors</a></th>
 	</tr>
 	`)
 	for _, row := range rows {
-		fmt.Fprintf(w, "<tr><td>%s</td><td>%d</td><td>%s</td><td>%d</td></tr>\n",
+		fmt.Fprintf(w, "<tr><td>%s</td><td>%d</td><td>%s</td><td>%s</td><td>%d</td></tr>\n",
 			row.query,
 			row.count,
 			time.Duration(row.duration).Round(time.Second),
+			time.Duration(row.duration/row.count).Round(time.Millisecond),
 			row.errors,
 		)
 	}
