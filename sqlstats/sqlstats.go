@@ -37,6 +37,7 @@ type queryStats struct {
 	count    int64
 	errors   int64
 	duration int64 // time.Duration
+	mean     int64
 	// TODO lastErr atomic.Value
 }
 
@@ -73,6 +74,7 @@ func (t *Tracer) collect() (rows []queryStats) {
 			errors:   atomic.LoadInt64(&s.errors),
 			duration: atomic.LoadInt64(&s.duration),
 		}
+		row.mean = row.duration / row.count
 		rows = append(rows, row)
 	}
 	return rows
@@ -106,6 +108,8 @@ func (t *Tracer) Handle(w http.ResponseWriter, r *http.Request) {
 		sort.Slice(rows, func(i, j int) bool { return rows[i].duration > rows[j].duration })
 	case "errors":
 		sort.Slice(rows, func(i, j int) bool { return rows[i].errors > rows[j].errors })
+	case "mean":
+		sort.Slice(rows, func(i, j int) bool { return rows[i].mean > rows[j].mean })
 	default:
 		http.Error(w, fmt.Sprintf("unknown sort: %q", sortParam), 400)
 	}
@@ -128,7 +132,7 @@ func (t *Tracer) Handle(w http.ResponseWriter, r *http.Request) {
 			row.query,
 			row.count,
 			time.Duration(row.duration).Round(time.Second),
-			time.Duration(row.duration/row.count).Round(time.Millisecond),
+			time.Duration(row.mean).Round(time.Millisecond),
 			row.errors,
 		)
 	}
