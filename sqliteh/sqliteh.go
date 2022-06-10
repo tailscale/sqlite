@@ -851,3 +851,50 @@ func itoa(buf []byte, val int64) []byte {
 	}
 	return buf[i:]
 }
+
+type BulkStmt interface {
+	ResetAndClear()
+	Finalize()
+
+	SetInt64(i int, v int64)
+	SetNull(i int)
+	SetText(i int, v []byte)
+
+	ParamIndex(name string) int
+}
+
+// BullkQuery executes an SQL statement.
+// It is designed to minimize allocations and cgo calls.
+type BulkQuery interface {
+	BulkStmt
+
+	// Int64 reports the current row's column i value as an int64.
+	// Panics if there is no current row, or i is out of bounds, or value is not an int64.
+	Int64(i int) int64
+	// Null reports if current row's column i value is NULL.
+	// Panics if there is no current row, or i is out of bounds.
+	Null(i int) bool
+	// Text reports the current row's column i value as text.
+	// The []byte is valid only as long as the BulkQuery is currently on this row.
+	// Panics if there is no current row, or i is out of bounds, or value is not an int64.
+	Text(i int) []byte
+
+	// Query starts the query.
+	// Any error is reported in the Error method.
+	Query()
+
+	// Next moves the query to the next row.
+	Next() bool
+
+	// Error reports any error from the query.
+	Error() error
+}
+
+// BullkExec executes an SQL statement that returns no rows.
+// It is designed to minimize allocations and cgo calls.
+type BullkExec interface {
+	BulkStmt
+
+	// Exec executes the query.
+	Exec() (lastInsertRowID, changes int64, d time.Duration, err error)
+}
