@@ -65,7 +65,7 @@ func openTestDB(t testing.TB) *sql.DB {
 	return db
 }
 
-func openTestDBTrace(t testing.TB, tracer Tracer) *sql.DB {
+func openTestDBTrace(t testing.TB, tracer sqliteh.Tracer) *sql.DB {
 	t.Helper()
 	db := sql.OpenDB(Connector("file:"+t.TempDir()+"/test.db", nil, tracer))
 	configDB(t, db)
@@ -491,13 +491,13 @@ type queryTracer struct {
 	evCh chan queryTraceEvent
 }
 
-func (t *queryTracer) Query(prepCtx context.Context, id TraceConnID, query string, duration time.Duration, err error) {
+func (t *queryTracer) Query(prepCtx context.Context, id sqliteh.TraceConnID, query string, duration time.Duration, err error) {
 	t.evCh <- queryTraceEvent{prepCtx, query, duration, err}
 }
-func (t *queryTracer) BeginTx(_ context.Context, _ TraceConnID, _ bool, _ error) {}
-func (t *queryTracer) Commit(_ TraceConnID, _ error) {
+func (t *queryTracer) BeginTx(_ context.Context, _ sqliteh.TraceConnID, _ bool, _ error) {}
+func (t *queryTracer) Commit(_ sqliteh.TraceConnID, _ error) {
 }
-func (t *queryTracer) Rollback(_ TraceConnID, _ error) {
+func (t *queryTracer) Rollback(_ sqliteh.TraceConnID, _ error) {
 }
 
 func TestTraceQuery(t *testing.T) {

@@ -91,44 +91,6 @@ var Open sqliteh.OpenFunc = func(string, sqliteh.OpenFlags, string) (sqliteh.DB,
 	return nil, fmt.Errorf("cgosqlite.Open is missing")
 }
 
-// TraceConnID uniquely identifies an SQLite connection in this process.
-//
-// It is provided to the Tracer to let it associate transaction events.
-type TraceConnID int
-
-// Tracer
-//
-// Each tracer method is provided with a TraceConnID, which is a stable
-// identifier of the underlying sql connection that the event happened
-// to, which can be used to collate events.
-//
-// Some tracer methods take a ctx which is the context object
-// provided by the user to that method. This can be used by the tracer
-// to plumb through context values.
-//
-// Any error that occurred executing the event is reported to the
-// tracer in the err parameter. If err is not nil, the event failed.
-type Tracer interface {
-	// Query is called by the driver to report a completed query.
-	//
-	// The query string is the string the user provided to Prepare.
-	// No parameters are filled in.
-	//
-	// The duration covers the complete execution time of the query,
-	// including both time spent inside SQLite, and time spent in user
-	// code between calls to rows.Next.
-	Query(prepCtx context.Context, id TraceConnID, query string, duration time.Duration, err error)
-
-	// BeginTx is called by the driver to report the beginning of Tx.
-	BeginTx(beginCtx context.Context, id TraceConnID, readOnly bool, err error)
-
-	// Commit is called by the driver to report the end of a Tx.
-	Commit(id TraceConnID, err error)
-
-	// ROllback is called by the driver to report the end of a Tx.
-	Rollback(id TraceConnID, err error)
-}
-
 // ConnInitFunc is a function called by the driver on new connections.
 //
 // The conn can be used to execute queries, and implements SQLConn.
@@ -152,7 +114,7 @@ func (d drv) OpenConnector(name string) (driver.Connector, error) {
 	return &connector{name: name}, nil
 }
 
-func Connector(sqliteURI string, connInitFunc ConnInitFunc, tracer Tracer) driver.Connector {
+func Connector(sqliteURI string, connInitFunc ConnInitFunc, tracer sqliteh.Tracer) driver.Connector {
 	return &connector{
 		name:         sqliteURI,
 		tracer:       tracer,
@@ -162,7 +124,7 @@ func Connector(sqliteURI string, connInitFunc ConnInitFunc, tracer Tracer) drive
 
 type connector struct {
 	name         string
-	tracer       Tracer
+	tracer       sqliteh.Tracer
 	connInitFunc ConnInitFunc
 }
 
@@ -189,7 +151,7 @@ func (p *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	c := &conn{
 		db:     db,
 		tracer: p.tracer,
-		id:     TraceConnID(atomic.AddInt32(&maxConnID, 1)),
+		id:     sqliteh.TraceConnID(atomic.AddInt32(&maxConnID, 1)),
 	}
 	if p.connInitFunc != nil {
 		if err := p.connInitFunc(ctx, c); err != nil {
@@ -210,8 +172,8 @@ const (
 
 type conn struct {
 	db       sqliteh.DB
-	id       TraceConnID
-	tracer   Tracer
+	id       sqliteh.TraceConnID
+	tracer   sqliteh.Tracer
 	stmts    map[string]*stmt // persisted statements
 	txState  txState
 	readOnly bool

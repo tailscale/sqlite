@@ -6,6 +6,7 @@ package sqliteh
 // Because this way standard names show up in search.
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -850,4 +851,42 @@ func itoa(buf []byte, val int64) []byte {
 		buf[i] = '-'
 	}
 	return buf[i:]
+}
+
+// TraceConnID uniquely identifies an SQLite connection in this process.
+//
+// It is provided to the Tracer to let it associate transaction events.
+type TraceConnID int
+
+// A Tracer traces use of an SQLite database connection.
+//
+// Each tracer method is provided with a TraceConnID, which is a stable
+// identifier of the underlying sql connection that the event happened
+// to, which can be used to collate events.
+//
+// Some tracer methods take a ctx which is the context object
+// provided by the user to that method. This can be used by the tracer
+// to plumb through context values.
+//
+// Any error that occurred executing the event is reported to the
+// tracer in the err parameter. If err is not nil, the event failed.
+type Tracer interface {
+	// Query is called by the driver to report a completed query.
+	//
+	// The query string is the string the user provided to Prepare.
+	// No parameters are filled in.
+	//
+	// The duration covers the complete execution time of the query,
+	// including both time spent inside SQLite, and time spent in user
+	// code between calls to rows.Next.
+	Query(prepCtx context.Context, id TraceConnID, query string, duration time.Duration, err error)
+
+	// BeginTx is called by the driver to report the beginning of Tx.
+	BeginTx(beginCtx context.Context, id TraceConnID, readOnly bool, err error)
+
+	// Commit is called by the driver to report the end of a Tx.
+	Commit(id TraceConnID, err error)
+
+	// Rollback is called by the driver to report the end of a Tx.
+	Rollback(id TraceConnID, err error)
 }

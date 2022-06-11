@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tailscale/sqlite"
+	"github.com/tailscale/sqlite/sqliteh"
 )
 
 // Tracer implements sqlite.Tracer and collects query stats.
@@ -80,7 +80,7 @@ func (t *Tracer) collect() (rows []queryStats) {
 	return rows
 }
 
-func (t *Tracer) Query(prepCtx context.Context, id sqlite.TraceConnID, query string, duration time.Duration, err error) {
+func (t *Tracer) Query(prepCtx context.Context, id sqliteh.TraceConnID, query string, duration time.Duration, err error) {
 	stats := t.queryStats(query)
 
 	atomic.AddInt64(&stats.count, 1)
@@ -90,9 +90,10 @@ func (t *Tracer) Query(prepCtx context.Context, id sqlite.TraceConnID, query str
 	}
 }
 
-func (t *Tracer) BeginTx(beginCtx context.Context, id sqlite.TraceConnID, readOnly bool, err error) {}
-func (t *Tracer) Commit(id sqlite.TraceConnID, err error)                                           {}
-func (t *Tracer) Rollback(id sqlite.TraceConnID, err error)                                         {}
+func (t *Tracer) BeginTx(beginCtx context.Context, id sqliteh.TraceConnID, readOnly bool, err error) {
+}
+func (t *Tracer) Commit(id sqliteh.TraceConnID, err error)   {}
+func (t *Tracer) Rollback(id sqliteh.TraceConnID, err error) {}
 
 func (t *Tracer) Handle(w http.ResponseWriter, r *http.Request) {
 	getArgs, _ := url.ParseQuery(r.URL.RawQuery)
