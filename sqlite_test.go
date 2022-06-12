@@ -494,7 +494,7 @@ type queryTracer struct {
 func (t *queryTracer) Query(prepCtx context.Context, id sqliteh.TraceConnID, query string, duration time.Duration, err error) {
 	t.evCh <- queryTraceEvent{prepCtx, query, duration, err}
 }
-func (t *queryTracer) BeginTx(_ context.Context, _ sqliteh.TraceConnID, _ bool, _ error) {}
+func (t *queryTracer) BeginTx(_ context.Context, _ sqliteh.TraceConnID, _ string, _ bool, _ error) {}
 func (t *queryTracer) Commit(_ sqliteh.TraceConnID, _ error) {
 }
 func (t *queryTracer) Rollback(_ sqliteh.TraceConnID, _ error) {
