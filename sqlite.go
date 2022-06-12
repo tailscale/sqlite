@@ -269,7 +269,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 	c.readOnly = opts.ReadOnly
 	c.txState = txStateInit
 	if c.tracer != nil {
-		c.tracer.BeginTx(ctx, c.id, c.readOnly, nil)
+		c.tracer.BeginTx(ctx, c.id, "", c.readOnly, nil)
 	}
 	if err := c.txInit(ctx); err != nil {
 		return nil, err

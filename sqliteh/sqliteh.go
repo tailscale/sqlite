@@ -882,7 +882,7 @@ type Tracer interface {
 	Query(prepCtx context.Context, id TraceConnID, query string, duration time.Duration, err error)
 
 	// BeginTx is called by the driver to report the beginning of Tx.
-	BeginTx(beginCtx context.Context, id TraceConnID, readOnly bool, err error)
+	BeginTx(beginCtx context.Context, id TraceConnID, why string, readOnly bool, err error)
 
 	// Commit is called by the driver to report the end of a Tx.
 	Commit(id TraceConnID, err error)
