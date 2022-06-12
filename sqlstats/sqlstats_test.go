@@ -1,9 +1,10 @@
-package sqlitestats
+package sqlstats
 
 import (
 	"context"
 	"database/sql"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -12,28 +13,27 @@ import (
 )
 
 func TestActiveTxs(t *testing.T) {
-	tracer := &Stats{}
+	tracer := &Tracer{}
 	db := sql.OpenDB(sqlite.Connector("file:"+t.TempDir()+"/test.db", nil, tracer))
 	defer db.Close()
 
 	ctx := context.Background()
-	tx1, err := db.BeginTx(WithName(ctx, "test-rw"), nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx1.Rollback()
-	tx2, err := db.BeginTx(WithName(ctx, "test-rw-closed"), nil)
-	if err != nil {
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "CREATE TABLE t (c);"); err != nil {
 		t.Fatal(err)
 	}
-	tx2.Rollback()
-	tx3, err := db.BeginTx(WithName(ctx, "test-ro"), &sql.TxOptions{ReadOnly: true})
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO t (c) VALUES (1);"); err != nil {
 		t.Fatal(err)
 	}
-	defer tx3.Rollback()
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 
-	srv := httptest.NewServer(tracer)
+	srv := httptest.NewServer(http.HandlerFunc(tracer.Handle))
 	defer srv.Close()
 	resp, err := srv.Client().Get(srv.URL)
 	if err != nil {
@@ -45,13 +45,10 @@ func TestActiveTxs(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	if want := "active transactions (2):"; !strings.Contains(s, want) {
+	if want := "CREATE TABLE t "; !strings.Contains(s, want) {
 		t.Fatalf("want %q, got:\n%s", want, s)
 	}
-	if want := "test-rw"; !strings.Contains(s, want) {
-		t.Fatalf("want %q, got:\n%s", want, s)
-	}
-	if want := "test-ro"; !strings.Contains(s, want) {
+	if want := "INSERT INTO t (c)"; !strings.Contains(s, want) {
 		t.Fatalf("want %q, got:\n%s", want, s)
 	}
 }
