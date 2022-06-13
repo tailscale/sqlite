@@ -3,6 +3,7 @@ package sqlstats
 
 import (
 	"context"
+	"expvar"
 	"fmt"
 	"html"
 	"net/http"
@@ -21,6 +22,12 @@ import (
 // To use, pass the tracer object to sqlite.Connector, then start a debug
 // web server with http.HandlerFunc(sqlTracer.Handle).
 type Tracer struct {
+	TxCount        *expvar.Map
+	TxCommit       *expvar.Map
+	TxCommitError  *expvar.Map
+	TxRollback     *expvar.Map
+	TxTotalSeconds *expvar.Map
+
 	curTxs sync.Map // TraceConnID -> *connStats
 
 	// Once a query has been seen once, only the read lock
@@ -40,12 +47,26 @@ type connStats struct {
 	readOnly bool
 }
 
-func (s *connStats) clear() {
+func (t *Tracer) done(s *connStats) (why string, readOnly bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	why = s.why
+	readOnly = s.readOnly
+	at := s.at
 	s.why = ""
 	s.at = time.Time{}
 	s.readOnly = false
+	s.mu.Unlock()
+
+	if t.TxTotalSeconds != nil {
+		sec := time.Since(at).Seconds()
+		t.TxTotalSeconds.AddFloat(why, sec)
+		if readOnly {
+			t.TxTotalSeconds.AddFloat("read", sec)
+		} else {
+			t.TxTotalSeconds.AddFloat("write", sec)
+		}
+	}
+	return why, readOnly
 }
 
 type queryStats struct {
@@ -128,16 +149,52 @@ func (t *Tracer) BeginTx(beginCtx context.Context, id sqliteh.TraceConnID, why s
 	s.at = time.Now()
 	s.readOnly = readOnly
 	s.mu.Unlock()
+
+	if t.TxCount != nil {
+		t.TxCount.Add(why, 1)
+		if readOnly {
+			t.TxCount.Add("read", 1)
+		} else {
+			t.TxCount.Add("write", 1)
+		}
+	}
 }
 
 func (t *Tracer) Commit(id sqliteh.TraceConnID, err error) {
 	s := t.connStats(id)
-	s.clear()
+	why, readOnly := t.done(s)
+	if err == nil {
+		if t.TxCommit != nil {
+			t.TxCommit.Add(why, 1)
+			if readOnly {
+				t.TxCommit.Add("read", 1)
+			} else {
+				t.TxCommit.Add("write", 1)
+			}
+		}
+	} else {
+		if t.TxCommitError != nil {
+			t.TxCommitError.Add(why, 1)
+			if readOnly {
+				t.TxCommitError.Add("read", 1)
+			} else {
+				t.TxCommitError.Add("write", 1)
+			}
+		}
+	}
 }
 
 func (t *Tracer) Rollback(id sqliteh.TraceConnID, err error) {
 	s := t.connStats(id)
-	s.clear()
+	why, readOnly := t.done(s)
+	if t.TxRollback != nil {
+		t.TxRollback.Add(why, 1)
+		if readOnly {
+			t.TxRollback.Add("read", 1)
+		} else {
+			t.TxRollback.Add("write", 1)
+		}
+	}
 }
 
 func (t *Tracer) HandleConns(w http.ResponseWriter, r *http.Request) {
