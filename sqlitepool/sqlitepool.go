@@ -121,6 +121,7 @@ func (p *Pool) Close() error {
 var errPoolClosed = fmt.Errorf("%w: sqlitepool closed", context.Canceled)
 
 // BeginTx creates a writable transaction using BEGIN IMMEDIATE.
+// The parameter why is passed to the Tracer for debugging.
 func (p *Pool) BeginTx(ctx context.Context, why string) (*Tx, error) {
 	select {
 	case <-p.closed:
@@ -134,7 +135,7 @@ func (p *Pool) BeginTx(ctx context.Context, why string) (*Tx, error) {
 			p.tracer.BeginTx(ctx, conn.id, why, false, err)
 		}
 		if err != nil {
-			p.rwConnFree <- conn
+			p.rwConnFree <- conn // can't block, buffer is big enough
 			return nil, err
 		}
 		return tx, nil
@@ -142,6 +143,7 @@ func (p *Pool) BeginTx(ctx context.Context, why string) (*Tx, error) {
 }
 
 // BeginRx creates a read-only transaction.
+// The parameter why is passed to the Tracer for debugging.
 func (p *Pool) BeginRx(ctx context.Context, why string) (*Rx, error) {
 	select {
 	case <-p.closed:
@@ -155,7 +157,7 @@ func (p *Pool) BeginRx(ctx context.Context, why string) (*Rx, error) {
 			p.tracer.BeginTx(ctx, conn.id, why, true, err)
 		}
 		if err != nil {
-			p.roConnsFree <- conn
+			p.roConnsFree <- conn // can't block, buffer is big enough
 			return nil, err
 		}
 		return &Rx{conn: conn}, nil
