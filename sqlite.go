@@ -189,7 +189,7 @@ func (c *conn) Close() error {
 	return reserr(c.db, "Conn.Close", "", c.db.Close())
 }
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	persist := ctx.Value(persistQuery{}) != nil
+	persist := ctx.Value(persistQueryKey) != nil
 	return c.prepare(ctx, query, persist)
 }
 
@@ -821,13 +821,18 @@ func Checkpoint(sqlconn SQLConn, dbName string, mode sqliteh.Checkpoint) (numFra
 	return numFrames, numFramesCheckpointed, err
 }
 
-// WithPersist makes a ctx instruct the sqlite driver to persist a prepared query.
+// WithPersist returns a ctx that instructs the sqlite driver to persist a
+// prepared query. If ctx is already persisting prepared queries, it is
+// returned.
 //
 // This should be used with recurring queries to avoid constant parsing and
 // planning of the query by SQLite.
 func WithPersist(ctx context.Context) context.Context {
-	return context.WithValue(ctx, persistQuery{}, persistQuery{})
+	if ctx.Value(persistQueryKey) != nil {
+		return ctx
+	}
+	return context.WithValue(ctx, persistQueryKey, persistQueryKey)
 }
 
-// persistQuery is used as a context value.
-type persistQuery struct{}
+// persistQueryKey is stored in a context to indicate that perpared statement queries should be persisted.
+var persistQueryKey = struct{}{}
