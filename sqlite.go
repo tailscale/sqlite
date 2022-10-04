@@ -7,8 +7,7 @@
 // This driver requires a file: URI always be used to open a database.
 // For details see https://sqlite.org/c3ref/open.html#urifilenames.
 //
-//
-// Initializing connections or tracing
+// # Initializing connections or tracing
 //
 // If you want to do initial configuration of a connection, or enable
 // tracing, use the Connector function:
@@ -18,8 +17,7 @@
 //	}
 //	db, err = sql.OpenDB(sqlite.Connector(sqliteURI, connInitFunc, nil))
 //
-//
-// Memory Mode
+// # Memory Mode
 //
 // In-memory databases are popular for tests.
 // Use the "memdb" VFS (*not* the legacy in-memory modes) to be compatible
@@ -29,8 +27,7 @@
 //
 // Use a different dbname for each memory database opened.
 //
-//
-// Binding Types
+// # Binding Types
 //
 // SQLite is flexible about type conversions, and so is this driver.
 // Almost all "basic" Go types (int, float64, string) are accepted and
@@ -39,8 +36,7 @@
 // Values that implement encoding.TextMarshaler or json.Marshaler are
 // stored in SQLite in their marshaled form.
 //
-//
-// Binding Time
+// # Binding Time
 //
 // While SQLite3 has no strict time datatype, it does have a series of built-in
 // functions that operate on timestamps that expect columns to be in one of many
@@ -50,9 +46,9 @@
 // shortest timestamp format that can accurately represent the time.Time.
 // The supported formats are:
 //
-//	2. YYYY-MM-DD HH:MM
-//	3. YYYY-MM-DD HH:MM:SS
-//	4. YYYY-MM-DD HH:MM:SS.SSS
+//  2. YYYY-MM-DD HH:MM
+//  3. YYYY-MM-DD HH:MM:SS
+//  4. YYYY-MM-DD HH:MM:SS.SSS
 //
 // If the time.Time is not UTC (strongly consider storing times in UTC!),
 // we follow SQLite's norm of appending "[+-]HH:MM" to the above formats.
@@ -62,8 +58,7 @@
 // in the link above. If you want to do that, pass the result of time.Time.Unix
 // to the driver.
 //
-//
-// Reading Time
+// # Reading Time
 //
 // In general, time is hard to extract from SQLite as a time.Time.
 // If a column is defined as DATE or DATETIME, then text data is parsed
@@ -280,12 +275,24 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 // Raw is so ConnInitFunc can cast to SQLConn.
 func (c *conn) Raw(fn func(interface{}) error) error { return fn(c) }
 
+type readOnlyKey struct{}
+
+// ReadOnly applies the query_only pragma to the connection.
+func ReadOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, readOnlyKey{}, true)
+}
+
+// IsReadOnly reports whether the context has the ReadOnly key.
+func IsReadOnly(ctx context.Context) bool {
+	return ctx.Value(readOnlyKey{}) != nil
+}
+
 func (c *conn) txInit(ctx context.Context) error {
 	if c.txState != txStateInit {
 		return nil
 	}
 	c.txState = txStateBegun
-	if c.readOnly {
+	if c.readOnly || IsReadOnly(ctx) {
 		if err := c.execInternal(ctx, "BEGIN"); err != nil {
 			return err
 		}
