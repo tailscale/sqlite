@@ -172,11 +172,9 @@ type Stmt interface {
 // https://www.sqlite.org/c3ref/backup_finish.html
 type Backup interface {
 	// Step is called repeatedly to transfer data between the two DBs.
-	Step(numPages int) (more bool, err error)
+	Step(numPages int) (more bool, remaining, pageCount int, err error)
 	// Finish releases all resources associated with the Backup.
 	Finish() error
-	Remaining() int
-	PageCount() int
 }
 
 // ColumnType are constants for each of the SQLite datatypes.

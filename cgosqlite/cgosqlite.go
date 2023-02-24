@@ -182,28 +182,31 @@ type backup struct {
 	backup *C.sqlite3_backup
 }
 
-func (b *backup) Step(numPages int) (more bool, err error) {
+func (b *backup) Step(numPages int) (more bool, remaining, pageCount int, err error) {
 	res := C.sqlite3_backup_step(b.backup, C.int(numPages))
-	if res == C.SQLITE_DONE {
-		return false, nil
+
+	// It is not safe to call remaining and pagecount concurrently with step, so
+	// instead just return them each time.
+	remaining = int(C.sqlite3_backup_remaining(b.backup))
+	pageCount = int(C.sqlite3_backup_pagecount(b.backup))
+
+	more = true
+	switch res {
+	case C.SQLITE_OK, C.SQLITE_BUSY, C.SQLITE_LOCKED:
+		more = true
+	default:
+		more = false
 	}
-	if res == C.SQLITE_OK {
-		return true, nil
-	}
-	return false, errCode(res)
+
+	return more, remaining, pageCount, errCode(res)
 }
 
 func (b *backup) Finish() error {
 	res := C.sqlite3_backup_finish(b.backup)
+	if res == C.SQLITE_OK {
+		return nil
+	}
 	return errCode(res)
-}
-
-func (b *backup) Remaining() int {
-	return int(C.sqlite3_backup_remaining(b.backup))
-}
-
-func (b *backup) PageCount() int {
-	return int(C.sqlite3_backup_pagecount(b.backup))
 }
 
 func (db *DB) Prepare(query string, prepFlags sqliteh.PrepareFlags) (stmt sqliteh.Stmt, remainingQuery string, err error) {

@@ -813,7 +813,30 @@ func TestBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer dstConn.Close()
-	if err := Backup(dstConn, "main", srcConn, "main"); err != nil {
+
+	var backup = func(dstConn *sql.Conn, dstName string, srcConn *sql.Conn, srcName string) error {
+		t.Helper()
+		b, err := NewBackup(dstConn, dstName, srcConn, srcName)
+		if err != nil {
+			return err
+		}
+		var (
+			more      = true
+			remaining int
+			pageCount int
+		)
+		for more {
+			more, remaining, pageCount, err = b.Step(1024)
+			t.Logf("backup step: more=%v, remaining=%d, pageCount=%d", more, remaining, pageCount)
+			if err != nil {
+				t.Errorf("backup step: %v", err)
+				more = false
+			}
+		}
+		return b.Finish()
+	}
+
+	if err := backup(dstConn, "main", srcConn, "main"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := dstConn.ExecContext(ctx, "ATTACH 'file:dst2?mode=memory' AS dst2;"); err != nil {
@@ -823,7 +846,7 @@ func TestBackup(t *testing.T) {
 	if err := dstConn.QueryRowContext(ctx, "SELECT count(*) FROM t1").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("err=%v, count=%d", err, count)
 	}
-	if err := Backup(dstConn, "dst2", srcConn, "src2"); err != nil {
+	if err := backup(dstConn, "dst2", srcConn, "src2"); err != nil {
 		t.Fatal(err)
 	}
 	count = 0
