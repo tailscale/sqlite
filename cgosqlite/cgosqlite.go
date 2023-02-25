@@ -159,6 +159,56 @@ func (db *DB) TxnState(schema string) sqliteh.TxnState {
 	return sqliteh.TxnState(C.sqlite3_txn_state(db.db, cSchema))
 }
 
+func (db *DB) BackupInit(dstSchema string, src sqliteh.DB, srcSchema string) (sqliteh.Backup, error) {
+	var cDstSchema, cSrcSchema *C.char
+	if dstSchema != "" {
+		cDstSchema = C.CString(dstSchema)
+		defer C.free(unsafe.Pointer(cDstSchema))
+	}
+	if srcSchema != "" {
+		cSrcSchema = C.CString(srcSchema)
+		defer C.free(unsafe.Pointer(cSrcSchema))
+	}
+
+	b := C.sqlite3_backup_init(db.db, cDstSchema, src.(*DB).db, cSrcSchema)
+	if b == nil {
+		// sqlite3_backup_init docs tell us the error is on the dst DB.
+		return nil, sqliteh.ErrCode(db.ExtendedErrCode())
+	}
+	return &backup{backup: b}, nil
+}
+
+type backup struct {
+	backup *C.sqlite3_backup
+}
+
+func (b *backup) Step(numPages int) (more bool, remaining, pageCount int, err error) {
+	res := C.sqlite3_backup_step(b.backup, C.int(numPages))
+
+	// It is not safe to call remaining and pagecount concurrently with step, so
+	// instead just return them each time.
+	remaining = int(C.sqlite3_backup_remaining(b.backup))
+	pageCount = int(C.sqlite3_backup_pagecount(b.backup))
+
+	more = true
+	switch res {
+	case C.SQLITE_OK, C.SQLITE_BUSY, C.SQLITE_LOCKED:
+		more = true
+	default:
+		more = false
+	}
+
+	return more, remaining, pageCount, errCode(res)
+}
+
+func (b *backup) Finish() error {
+	res := C.sqlite3_backup_finish(b.backup)
+	if res == C.SQLITE_OK {
+		return nil
+	}
+	return errCode(res)
+}
+
 func (db *DB) Prepare(query string, prepFlags sqliteh.PrepareFlags) (stmt sqliteh.Stmt, remainingQuery string, err error) {
 	csql := C.CString(query)
 	defer C.free(unsafe.Pointer(csql))

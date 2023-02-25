@@ -123,20 +123,25 @@ type connector struct {
 	connInitFunc ConnInitFunc
 }
 
+func errWithMsg(db sqliteh.DB, err error, loc string) error {
+	if ec, ok := err.(sqliteh.ErrCode); ok {
+		e := &Error{
+			Code: sqliteh.Code(ec),
+			Loc:  loc,
+		}
+		if db != nil {
+			e.Msg = db.ErrMsg()
+		}
+		return e
+	}
+	return err
+}
+
 func (p *connector) Driver() driver.Driver { return drv{} }
 func (p *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	db, err := Open(p.name, sqliteh.OpenFlagsDefault, "")
 	if err != nil {
-		if ec, ok := err.(sqliteh.ErrCode); ok {
-			e := &Error{
-				Code: sqliteh.Code(ec),
-				Loc:  "Open",
-			}
-			if db != nil {
-				e.Msg = db.ErrMsg()
-			}
-			err = e
-		}
+		err = errWithMsg(db, err, "Open")
 		if db != nil {
 			db.Close()
 		}
@@ -838,3 +843,85 @@ func WithPersist(ctx context.Context) context.Context {
 
 // persistQuery is used as a context value.
 type persistQuery struct{}
+
+// DB executes fn with the sqliteh.DB underlying sqlconn.
+func DB(sqlconn SQLConn, fn func(sqliteh.DB) error) error {
+	return sqlconn.Raw(func(driverConn interface{}) error {
+		c, ok := driverConn.(*conn)
+		if !ok {
+			return fmt.Errorf("sqlite.Checkpoint: sql.Conn is not the sqlite driver: %T", driverConn)
+		}
+		return fn(c.db)
+	})
+}
+
+// Backup holds an in-progress backup context.
+type Backup struct {
+	backup sqliteh.Backup
+	src    sqliteh.DB
+	dst    sqliteh.DB
+}
+
+// NewBackup starts a new backup operation that will read from the SQLite
+// database srcConn, schema srcSchema, and write to the database dstConn, schema
+// dstSchema.
+// The database owned by dstConn will be locked for the duration, and must not
+// be modified by other connections or processes.
+// The database owned by srcConn will be read-locked during each call to Step,
+// but can otherwise be used normally. Applications must arrange to ensure that
+// there is mutual exclusion between queries and step calls on the source
+// connection.
+// If a different connection alters the source database during the backup, Step
+// will restart the backup process from the beginning, however if the source
+// connection alters the database, the backup can continue and will include
+// pages affected by the concurrent transactions.
+// Finish must be called on the returned backup object in order to free
+// resources consumed by the backup operation, even if errors occur during steps
+// of the backup process. Finish can also be called any time that Step is not
+// running in order to abort the backup.
+func NewBackup(dstConn SQLConn, dstSchema string, srcConn SQLConn, srcSchema string) (*Backup, error) {
+	var b Backup
+	err := DB(dstConn, func(dst sqliteh.DB) error {
+		return DB(srcConn, func(src sqliteh.DB) error {
+			var err error
+			b.src = src
+			b.dst = dst
+			b.backup, err = dst.BackupInit(dstSchema, src, srcSchema)
+			return errWithMsg(dst, err, "Backup")
+		})
+	})
+	return &b, err
+}
+
+// Step makes incremental progress toward a complete online backup. It performs
+// at most numPages of copies from the source database to the target database.
+//
+// Step may be called in between other queries on the source connection, so as
+// to concurrently to service traffic, however Step must not be called in
+// parallel with other queries on the source connection.
+//
+// Step may return more=true and non-fatal errors of either SQLITE_BUSY or
+// SQLITE_LOCKED, however either of these errors being returned likely indicate
+// that an external writer has modified the source database and there will be a
+// side effect that the backup will restart from the beginning on the next call
+// to Step.
+//
+// Progress is reported by the `remaining` and `pageCount` values. remaining is
+// the number of pages left to copy, and pageCount is the current number of
+// pages in total that must be copied. pageCount may change in size due to
+// writes that occur during the backup process.
+func (b *Backup) Step(numPages int) (more bool, remaining, pageCount int, err error) {
+	more, remaining, pageCount, err = b.backup.Step(numPages)
+	err = errWithMsg(b.dst, err, "Step")
+	return
+}
+
+// Finish frees up the backup object and any resources it consumes. It must be
+// called even if errors occured calling Step. If Step reports a fatal error,
+// Finish will also return the same error. Finish can be called at any time to
+// abort a backup operation early.
+func (b *Backup) Finish() error {
+	err := b.backup.Finish()
+	err = errWithMsg(b.dst, err, "Finish")
+	return err
+}

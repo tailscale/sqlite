@@ -779,6 +779,82 @@ func TestAttachOrderingDeadlock(t *testing.T) {
 	}
 }
 
+func TestBackup(t *testing.T) {
+	src, err := sql.Open("sqlite3", "file:src?mode=memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	dst, err := sql.Open("sqlite3", "file:dst?mode=memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dst.Close()
+	ctx := context.Background()
+
+	srcConn, err := src.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srcConn.Close()
+	err = ExecScript(srcConn, `
+		ATTACH 'file:src2?mode=memory' AS src2;
+		CREATE TABLE t1 (c);
+		INSERT INTO t1 VALUES ('a');
+		CREATE TABLE src2.t2 (c);
+		INSERT INTO src2.t2 VALUES ('b');
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dstConn, err := src.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dstConn.Close()
+
+	var backup = func(dstConn *sql.Conn, dstName string, srcConn *sql.Conn, srcName string) error {
+		t.Helper()
+		b, err := NewBackup(dstConn, dstName, srcConn, srcName)
+		if err != nil {
+			return err
+		}
+		var (
+			more      = true
+			remaining int
+			pageCount int
+		)
+		for more {
+			more, remaining, pageCount, err = b.Step(1024)
+			t.Logf("backup step: more=%v, remaining=%d, pageCount=%d", more, remaining, pageCount)
+			if err != nil {
+				t.Errorf("backup step: %v", err)
+				more = false
+			}
+		}
+		return b.Finish()
+	}
+
+	if err := backup(dstConn, "main", srcConn, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dstConn.ExecContext(ctx, "ATTACH 'file:dst2?mode=memory' AS dst2;"); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := dstConn.QueryRowContext(ctx, "SELECT count(*) FROM t1").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("err=%v, count=%d", err, count)
+	}
+	if err := backup(dstConn, "dst2", srcConn, "src2"); err != nil {
+		t.Fatal(err)
+	}
+	count = 0
+	if err := dstConn.QueryRowContext(ctx, "SELECT count(*) FROM dst2.t2").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("err=%v, count=%d", err, count)
+	}
+}
+
 func BenchmarkPersist(b *testing.B) {
 	ctx := context.Background()
 	db := openTestDB(b)

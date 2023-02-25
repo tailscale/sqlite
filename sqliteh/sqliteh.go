@@ -53,6 +53,9 @@ type DB interface {
 	AutoCheckpoint(n int) error
 	// TxnState is sqlite3_txn_state.
 	TxnState(schema string) TxnState
+	// BackupInit is sqlite3_backup_init, this DB is the destination.
+	// https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupinit
+	BackupInit(dstSchema string, src DB, srcSchema string) (Backup, error)
 }
 
 // Stmt is an sqlite3_stmt* database connection object.
@@ -163,6 +166,15 @@ type Stmt interface {
 	// ColumnTableName is sqlite3_column_table_name.
 	// https://sqlite.org/c3ref/column_database_name.html
 	ColumnTableName(col int) string
+}
+
+// Backup is an sqlite3_backup object.
+// https://www.sqlite.org/c3ref/backup_finish.html
+type Backup interface {
+	// Step is called repeatedly to transfer data between the two DBs.
+	Step(numPages int) (more bool, remaining, pageCount int, err error)
+	// Finish releases all resources associated with the Backup.
+	Finish() error
 }
 
 // ColumnType are constants for each of the SQLite datatypes.
