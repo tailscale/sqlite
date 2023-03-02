@@ -10,6 +10,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -776,6 +777,63 @@ func TestAttachOrderingDeadlock(t *testing.T) {
 			defer wg.Done()
 			lockTables("attached-then-main", "attached.a2", "main.m2")
 		}()
+	}
+}
+
+func TestSetWALHook(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+
+	var conns []*sql.Conn
+	for i := 1; i <= 2; i++ {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		conns = append(conns, conn)
+	}
+
+	got := []string{}
+	for i := 1; i <= 2; i++ {
+		hookGen := i
+		for connNum, conn := range conns {
+			connNum := connNum
+			err := SetWALHook(conn, func(dbName string, pages int) {
+				s := fmt.Sprintf("conn=%d, db=%s, pages=%v", connNum, dbName, pages)
+				if hookGen == 2 { // verify our hook replacement worked
+					got = append(got, s)
+				}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	if _, err := conns[0].ExecContext(ctx, "CREATE TABLE foo (k INT)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conns[1].ExecContext(ctx, "INSERT INTO foo VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	// Disable the hook.
+	for _, conn := range conns {
+		if err := SetWALHook(conn, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// And do another write that we shouldn't get a callback for.
+	if _, err := conns[1].ExecContext(ctx, "INSERT INTO foo VALUES (2)"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{
+		"conn=0, db=main, pages=2",
+		"conn=1, db=main, pages=3",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("wrong\n got: %q\nwant: %q", got, want)
 	}
 }
 
