@@ -803,6 +803,20 @@ func BusyTimeout(sqlconn SQLConn, d time.Duration) error {
 	})
 }
 
+// SetWALHook calls sqlite3_wal_hook.
+//
+// If hook is nil, the hook is removed.
+func SetWALHook(sqlconn SQLConn, hook func(dbName string, pages int)) error {
+	return sqlconn.Raw(func(driverConn interface{}) error {
+		c, ok := driverConn.(*conn)
+		if !ok {
+			return fmt.Errorf("sqlite.TxnState: sql.Conn is not the sqlite driver: %T", driverConn)
+		}
+		c.db.SetWALHook(hook)
+		return nil
+	})
+}
+
 // TxnState calls sqlite3_txn_state on the underlying connection.
 func TxnState(sqlconn SQLConn, schema string) (state sqliteh.TxnState, err error) {
 	return state, sqlconn.Raw(func(driverConn interface{}) error {

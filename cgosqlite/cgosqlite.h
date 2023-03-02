@@ -1,3 +1,7 @@
+// Forward decls because the warnings make debugging painful.
+size_t _GoStringLen(_GoString_ s);
+const char *_GoStringPtr(_GoString_ s);
+
 // Helper methods to deal with int <-> pointer pain.
 
 static int bind_text64(sqlite3_stmt* stmt, int col, const char* str, sqlite3_uint64 len) {
@@ -17,7 +21,7 @@ static int bind_blob64(sqlite3_stmt* stmt, int col, char* str, sqlite3_uint64 n)
 // do the conversion here instead of with C.CString.
 static int bind_parameter_index(sqlite3_stmt* stmt, _GoString_ s) {
 	size_t n = _GoStringLen(s);
-	const char *p = _GoStringPtr(s);
+	const char *p = (const char *)_GoStringPtr(s);
 
 	// Start with zeroed zName to provide NUL-terminated string.
 	char zName[256] = {0};
@@ -69,4 +73,18 @@ static int reset_and_clear(sqlite3_stmt* stmt, struct timespec* start, int64_t* 
 		return ret;
 	}
 	return ret2;
+}
+
+int walCallbackGo(sqlite3 *db, char *dbName, int pages);
+
+static int wal_callback_into_go(void *userData, sqlite3 *db, const char *dbName,
+                            int pages) {
+	return walCallbackGo(db, (char *)dbName, pages);
+}
+
+// ts_sqlite3_wal_hook_go makes db's WAL hook call into Go.
+//
+// It must already be registered on Go's side first.
+static void ts_sqlite3_wal_hook_go(sqlite3* db) {
+	sqlite3_wal_hook(db, wal_callback_into_go, 0);
 }

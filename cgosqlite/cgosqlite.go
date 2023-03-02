@@ -54,11 +54,31 @@ package cgosqlite
 // #include "cgosqlite.h"
 import "C"
 import (
+	"sync"
 	"time"
 	"unsafe"
 
 	"github.com/tailscale/sqlite/sqliteh"
 )
+
+type walHookCb func(dbName string, pages int)
+
+var walHookFunc sync.Map // from *C.sqlite3 to walHookCb
+
+//export walCallbackGo
+func walCallbackGo(db *C.sqlite3, dbName *C.char, pages C.int) C.int {
+	v, _ := walHookFunc.Load(db)
+	hook, ok := v.(walHookCb)
+	if !ok {
+		return C.int(0)
+	}
+	// TODO: avoid C.GoString allocate and use only alloc a Go string if we
+	// don't already one in a map[string]string intern table that we can look up
+	// by m[string([]byte)] without allocating, if we get the []byte from the
+	// const char*.
+	hook(C.GoString(dbName), int(pages))
+	return C.int(0) // result's kinda useless
+}
 
 func init() {
 	C.sqlite3_initialize()
@@ -104,6 +124,7 @@ func Open(filename string, flags sqliteh.OpenFlags, vfs string) (sqliteh.DB, err
 
 func (db *DB) Close() error {
 	// TODO(crawshaw): consider using sqlite3_close_v2, if we are going to use finalizers for cleanup.
+	walHookFunc.Delete(db.db)
 	res := C.sqlite3_close(db.db)
 	return errCode(res)
 }
@@ -148,6 +169,15 @@ func (db *DB) Checkpoint(dbName string, mode sqliteh.Checkpoint) (int, int, erro
 func (db *DB) AutoCheckpoint(n int) error {
 	res := C.sqlite3_wal_autocheckpoint(db.db, C.int(n))
 	return errCode(res)
+}
+
+func (db *DB) SetWALHook(f func(dbName string, pages int)) {
+	if f != nil {
+		walHookFunc.Store(db.db, walHookCb(f))
+	} else {
+		walHookFunc.Delete(db.db)
+	}
+	C.ts_sqlite3_wal_hook_go(db.db)
 }
 
 func (db *DB) TxnState(schema string) sqliteh.TxnState {

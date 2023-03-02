@@ -53,6 +53,10 @@ type DB interface {
 	AutoCheckpoint(n int) error
 	// TxnState is sqlite3_txn_state.
 	TxnState(schema string) TxnState
+	// SetWALHook is sqlite3_wal_hook.
+	//
+	// If hook is nil, the hook is removed.
+	SetWALHook(hook func(dbName string, pages int))
 }
 
 // Stmt is an sqlite3_stmt* database connection object.
