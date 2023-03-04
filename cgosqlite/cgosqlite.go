@@ -66,17 +66,16 @@ type walHookCb func(dbName string, pages int)
 var walHookFunc sync.Map // from *C.sqlite3 to walHookCb
 
 //export walCallbackGo
-func walCallbackGo(db *C.sqlite3, dbName *C.char, pages C.int) C.int {
+func walCallbackGo(db *C.sqlite3, dbNameC *C.char, dbNameLen C.int, pages C.int) C.int {
 	v, _ := walHookFunc.Load(db)
-	hook, ok := v.(walHookCb)
-	if !ok {
+	hook, _ := v.(walHookCb)
+	if hook == nil {
 		return C.int(0)
 	}
-	// TODO: avoid C.GoString allocate and use only alloc a Go string if we
-	// don't already one in a map[string]string intern table that we can look up
-	// by m[string([]byte)] without allocating, if we get the []byte from the
-	// const char*.
-	hook(C.GoString(dbName), int(pages))
+
+	dbNameB := unsafe.Slice((*byte)(unsafe.Pointer(dbNameC)), dbNameLen)
+	dbName := stringFromBytes(dbNameB)
+	hook(dbName, int(pages))
 	return C.int(0) // result's kinda useless
 }
 
@@ -405,3 +404,22 @@ func (stmt *Stmt) ColumnDeclType(col int) string {
 var emptyCStr = C.CString("")
 
 func errCode(code C.int) error { return sqliteh.CodeAsError(sqliteh.Code(code)) }
+
+// internCache contains interned strings.
+var internCache sync.Map // string => string (key == value)
+
+// stringFromBytes returns string(b), interned into a map forever. It's meant
+// for use on hot, small strings from closed set (like database or table or
+// column names) where it doesn't matter if it leaks forever.
+func stringFromBytes(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	v, _ := internCache.Load(unsafe.String(&b[0], len(b)))
+	if s, ok := v.(string); ok {
+		return s
+	}
+	s := string(b)
+	internCache.Store(s, s)
+	return s
+}
