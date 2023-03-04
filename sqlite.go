@@ -417,7 +417,25 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return nil, err
 	}
 	_ = row // TODO: return error if exec on query which returns rows?
-	return stmtResult{lastInsertID: lastInsertRowID, rowsAffected: changes}, nil
+	return getStmtResult(lastInsertRowID, changes), nil
+}
+
+var (
+	stmtResultZeroRows = &stmtResult{}
+	stmtResultOneRow   = &stmtResult{rowsAffected: 1}
+)
+
+func getStmtResult(lastInsertID int64, rowsAffected int64) *stmtResult {
+	// Some common cases to avoid allocs:
+	if lastInsertID == 0 {
+		switch rowsAffected {
+		case 0:
+			return stmtResultZeroRows
+		case 1:
+			return stmtResultOneRow
+		}
+	}
+	return &stmtResult{lastInsertID: lastInsertID, rowsAffected: rowsAffected}
 }
 
 type stmtResult struct {
@@ -425,8 +443,8 @@ type stmtResult struct {
 	rowsAffected int64
 }
 
-func (res stmtResult) LastInsertId() (int64, error) { return res.lastInsertID, nil }
-func (res stmtResult) RowsAffected() (int64, error) { return res.rowsAffected, nil }
+func (res *stmtResult) LastInsertId() (int64, error) { return res.lastInsertID, nil }
+func (res *stmtResult) RowsAffected() (int64, error) { return res.rowsAffected, nil }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
 	if err := s.resetAndClear(); err != nil {

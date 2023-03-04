@@ -1,3 +1,3 @@
 module github.com/tailscale/sqlite
 
-go 1.18
+go 1.20

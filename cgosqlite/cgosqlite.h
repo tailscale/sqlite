@@ -75,11 +75,11 @@ static int reset_and_clear(sqlite3_stmt* stmt, struct timespec* start, int64_t* 
 	return ret2;
 }
 
-int walCallbackGo(sqlite3 *db, char *dbName, int pages);
+int walCallbackGo(sqlite3 *db, char *dbName, int dbNameLen, int pages);
 
 static int wal_callback_into_go(void *userData, sqlite3 *db, const char *dbName,
                             int pages) {
-	return walCallbackGo(db, (char *)dbName, pages);
+	return walCallbackGo(db, (char *)dbName, strlen(dbName), pages);
 }
 
 // ts_sqlite3_wal_hook_go makes db's WAL hook call into Go.

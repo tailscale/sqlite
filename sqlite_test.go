@@ -811,12 +811,13 @@ func TestSetWALHook(t *testing.T) {
 		}
 	}
 
-	if _, err := conns[0].ExecContext(ctx, "CREATE TABLE foo (k INT)"); err != nil {
+	if _, err := conns[0].ExecContext(ctx, "CREATE TABLE foo (k INT, v INT)"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conns[1].ExecContext(ctx, "INSERT INTO foo VALUES (1)"); err != nil {
+	if _, err := conns[1].ExecContext(ctx, "INSERT INTO foo VALUES (1, 2)"); err != nil {
 		t.Fatal(err)
 	}
+
 	// Disable the hook.
 	for _, conn := range conns {
 		if err := SetWALHook(conn, nil); err != nil {
@@ -824,7 +825,7 @@ func TestSetWALHook(t *testing.T) {
 		}
 	}
 	// And do another write that we shouldn't get a callback for.
-	if _, err := conns[1].ExecContext(ctx, "INSERT INTO foo VALUES (2)"); err != nil {
+	if _, err := conns[1].ExecContext(ctx, "INSERT INTO foo VALUES (2, 3)"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -834,6 +835,54 @@ func TestSetWALHook(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("wrong\n got: %q\nwant: %q", got, want)
+	}
+
+	// Check allocs
+	if err := SetWALHook(conns[0], func(dbName string, pages int) {}); err != nil {
+		t.Fatal(err)
+	}
+
+	stmt, err := conns[0].PrepareContext(WithPersist(ctx), "UPDATE foo SET v = v + 1 WHERE k in (SELECT k FROM foo LIMIT 1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := testing.AllocsPerRun(10000, func() {
+		if _, err := stmt.Exec(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	const maxAllocs = 3 // as of Go 1.20
+	if n > maxAllocs {
+		t.Errorf("allocs = %v; want no more than %v", n, maxAllocs)
+	}
+}
+
+func BenchmarkWALHookAndExec(b *testing.B) {
+	ctx := context.Background()
+	db := openTestDB(b)
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer conn.Close()
+	if err := SetWALHook(conn, func(dbName string, pages int) {}); err != nil {
+		b.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, "CREATE TABLE foo (k INT, v INT)"); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	stmt, err := conn.PrepareContext(WithPersist(ctx), "UPDATE foo SET v=123") // will match no rows
+	if err != nil {
+		b.Fatal(err)
+	}
+	for i := 0; i < b.N; i++ {
+		if _, err := stmt.Exec(); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
