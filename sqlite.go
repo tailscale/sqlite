@@ -100,12 +100,12 @@ func init() {
 	sql.Register("sqlite3", drv{})
 }
 
-var maxConnID int32 // accessed only via sync/atomic
+var maxConnID atomic.Int32
 
 type drv struct{}
 
-func (d drv) Open(name string) (driver.Conn, error) { panic("deprecated, unused") }
-func (d drv) OpenConnector(name string) (driver.Connector, error) {
+func (drv) Open(name string) (driver.Conn, error) { panic("deprecated, unused") }
+func (drv) OpenConnector(name string) (driver.Connector, error) {
 	return &connector{name: name}, nil
 }
 
@@ -146,7 +146,7 @@ func (p *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	c := &conn{
 		db:     db,
 		tracer: p.tracer,
-		id:     sqliteh.TraceConnID(atomic.AddInt32(&maxConnID, 1)),
+		id:     sqliteh.TraceConnID(maxConnID.Add(1)),
 	}
 	if p.connInitFunc != nil {
 		if err := p.connInitFunc(ctx, c); err != nil {
@@ -273,7 +273,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 }
 
 // Raw is so ConnInitFunc can cast to SQLConn.
-func (c *conn) Raw(fn func(interface{}) error) error { return fn(c) }
+func (c *conn) Raw(fn func(any) error) error { return fn(c) }
 
 type readOnlyKey struct{}
 
@@ -487,7 +487,7 @@ func (s *stmt) bindAll(args []driver.NamedValue) error {
 func (s *stmt) bind(arg driver.NamedValue) error {
 	// TODO(crawshaw): could use a union-ish data type for debugName
 	// to avoid the allocation.
-	var debugName interface{}
+	var debugName any
 	if arg.Name == "" {
 		debugName = arg.Ordinal
 	} else {
@@ -569,7 +569,7 @@ func (s *stmt) bind(arg driver.NamedValue) error {
 	}
 }
 
-func (s *stmt) bindBasic(debugName interface{}, ordinal int, v interface{}) (found bool, err error) {
+func (s *stmt) bindBasic(debugName any, ordinal int, v any) (found bool, err error) {
 	defer func() {
 		if err != nil {
 			err = s.reserr(fmt.Sprintf("Bind:%v:%T", debugName, v), err)
@@ -762,7 +762,7 @@ func (err Error) Error() string {
 // SQLConn is a database/sql.Conn.
 // (We cannot create a circular package dependency here.)
 type SQLConn interface {
-	Raw(func(driverConn interface{}) error) error
+	Raw(func(driverConn any) error) error
 }
 
 // ExecScript executes a set of SQL queries on an sql.Conn.
@@ -780,7 +780,7 @@ type SQLConn interface {
 //	}
 //	c.Close() // return sql.Conn to pool
 func ExecScript(sqlconn SQLConn, queries string) error {
-	return sqlconn.Raw(func(driverConn interface{}) error {
+	return sqlconn.Raw(func(driverConn any) error {
 		c, ok := driverConn.(*conn)
 		if !ok {
 			return fmt.Errorf("sqlite.ExecScript: sql.Conn is not the sqlite driver: %T", driverConn)
@@ -811,7 +811,7 @@ func ExecScript(sqlconn SQLConn, queries string) error {
 
 // BusyTimeout calls sqlite3_busy_timeout on the underlying connection.
 func BusyTimeout(sqlconn SQLConn, d time.Duration) error {
-	return sqlconn.Raw(func(driverConn interface{}) error {
+	return sqlconn.Raw(func(driverConn any) error {
 		c, ok := driverConn.(*conn)
 		if !ok {
 			return fmt.Errorf("sqlite.BusyTimeout: sql.Conn is not the sqlite driver: %T", driverConn)
@@ -825,7 +825,7 @@ func BusyTimeout(sqlconn SQLConn, d time.Duration) error {
 //
 // If hook is nil, the hook is removed.
 func SetWALHook(sqlconn SQLConn, hook func(dbName string, pages int)) error {
-	return sqlconn.Raw(func(driverConn interface{}) error {
+	return sqlconn.Raw(func(driverConn any) error {
 		c, ok := driverConn.(*conn)
 		if !ok {
 			return fmt.Errorf("sqlite.TxnState: sql.Conn is not the sqlite driver: %T", driverConn)
@@ -837,7 +837,7 @@ func SetWALHook(sqlconn SQLConn, hook func(dbName string, pages int)) error {
 
 // TxnState calls sqlite3_txn_state on the underlying connection.
 func TxnState(sqlconn SQLConn, schema string) (state sqliteh.TxnState, err error) {
-	return state, sqlconn.Raw(func(driverConn interface{}) error {
+	return state, sqlconn.Raw(func(driverConn any) error {
 		c, ok := driverConn.(*conn)
 		if !ok {
 			return fmt.Errorf("sqlite.TxnState: sql.Conn is not the sqlite driver: %T", driverConn)
@@ -849,7 +849,7 @@ func TxnState(sqlconn SQLConn, schema string) (state sqliteh.TxnState, err error
 
 // Checkpoint calls sqlite3_wal_checkpoint_v2 on the underlying connection.
 func Checkpoint(sqlconn SQLConn, dbName string, mode sqliteh.Checkpoint) (numFrames, numFramesCheckpointed int, err error) {
-	err = sqlconn.Raw(func(driverConn interface{}) error {
+	err = sqlconn.Raw(func(driverConn any) error {
 		c, ok := driverConn.(*conn)
 		if !ok {
 			return fmt.Errorf("sqlite.Checkpoint: sql.Conn is not the sqlite driver: %T", driverConn)
