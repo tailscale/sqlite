@@ -75,10 +75,10 @@ func openTestDBTrace(t testing.TB, tracer sqliteh.Tracer) *sql.DB {
 
 // execContexter is an *sql.DB or an *sql.Tx.
 type execContexter interface {
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-func exec(t *testing.T, db execContexter, query string, args ...interface{}) sql.Result {
+func exec(t *testing.T, db execContexter, query string, args ...any) sql.Result {
 	t.Helper()
 	ctx := context.Background()
 	res, err := db.ExecContext(ctx, query, args...)
@@ -353,7 +353,7 @@ func TestWithPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = sqlConn.Raw(func(driverConn interface{}) error {
+	err = sqlConn.Raw(func(driverConn any) error {
 		c := driverConn.(*conn)
 		if c.stmts[ins] != nil {
 			return fmt.Errorf("query %q was persisted", ins)
@@ -367,7 +367,7 @@ func TestWithPersist(t *testing.T) {
 	if _, err := sqlConn.ExecContext(WithPersist(ctx), ins, 2); err != nil {
 		t.Fatal(err)
 	}
-	err = sqlConn.Raw(func(driverConn interface{}) error {
+	err = sqlConn.Raw(func(driverConn any) error {
 		c := driverConn.(*conn)
 		if c.stmts[ins] == nil {
 			return fmt.Errorf("query %q was not persisted", ins)
@@ -541,7 +541,7 @@ func TestTraceQuery(t *testing.T) {
 	expectEv(context.Background(), "PRAGMA journal_mode=WAL", noErr) // from configDB
 	expectEv(context.Background(), "PRAGMA synchronous=OFF", noErr)
 
-	execCtx := func(ctx context.Context, query string, args ...interface{}) {
+	execCtx := func(ctx context.Context, query string, args ...any) {
 		t.Helper()
 		if _, err := db.ExecContext(ctx, query, args...); err != nil {
 			t.Fatal(err)
