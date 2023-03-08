@@ -7,6 +7,7 @@ package sqliteh
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -175,6 +176,26 @@ type Stmt interface {
 	// ColumnTableName is sqlite3_column_table_name.
 	// https://sqlite.org/c3ref/column_database_name.html
 	ColumnTableName(col int) string
+
+	// StepAllBinary reads all rows into dstBuf, binary packed.
+	//
+	// It returns how much of dstBuf was populated.
+	//
+	// It returns an error of type BufferSizeTooSmallError if dstBuf is too
+	// small. That error's EncodedSize says how large a buffer would need to be.
+	//
+	// First byte of dstBuf contains the version of the format; it is currently
+	// always '1'. Callers should verify (with tests) that the format hasn't
+	// changed since they updated their go.mod deps.
+	StepAllBinary(dstBuf []byte) (n int, err error)
+}
+
+type BufferSizeTooSmallError struct {
+	EncodedSize int
+}
+
+func (e BufferSizeTooSmallError) Error() string {
+	return fmt.Sprintf("buffer size too small; need %d bytes", e.EncodedSize)
 }
 
 // ColumnType are constants for each of the SQLite datatypes.

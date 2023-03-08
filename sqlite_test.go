@@ -78,7 +78,7 @@ type execContexter interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-func exec(t *testing.T, db execContexter, query string, args ...any) sql.Result {
+func exec(t testing.TB, db execContexter, query string, args ...any) sql.Result {
 	t.Helper()
 	ctx := context.Background()
 	res, err := db.ExecContext(ctx, query, args...)

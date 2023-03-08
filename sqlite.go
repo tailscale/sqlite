@@ -184,8 +184,7 @@ func (c *conn) Close() error {
 	return reserr(c.db, "Conn.Close", "", c.db.Close())
 }
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	persist := ctx.Value(persistQuery{}) != nil
-	return c.prepare(ctx, query, persist)
+	return c.prepare(ctx, query, IsPersist(ctx))
 }
 
 func (c *conn) prepare(ctx context.Context, query string, persist bool) (s *stmt, err error) {
@@ -895,6 +894,11 @@ func Checkpoint(sqlconn SQLConn, dbName string, mode sqliteh.Checkpoint) (numFra
 // planning of the query by SQLite.
 func WithPersist(ctx context.Context) context.Context {
 	return context.WithValue(ctx, persistQuery{}, persistQuery{})
+}
+
+// IsPersist reports whether the context has the Persist key.
+func IsPersist(ctx context.Context) bool {
+	return ctx.Value(persistQuery{}) != nil
 }
 
 // persistQuery is used as a context value.
