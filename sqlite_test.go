@@ -887,6 +887,7 @@ func BenchmarkWALHookAndExec(b *testing.B) {
 }
 
 func BenchmarkPersist(b *testing.B) {
+	b.ReportAllocs()
 	ctx := context.Background()
 	db := openTestDB(b)
 	conn, err := db.Conn(ctx)
@@ -911,6 +912,7 @@ func BenchmarkPersist(b *testing.B) {
 }
 
 func BenchmarkEmptyExec(b *testing.B) {
+	b.ReportAllocs()
 	ctx := context.Background()
 	db := openTestDB(b)
 	ctx = WithPersist(ctx)
@@ -922,6 +924,7 @@ func BenchmarkEmptyExec(b *testing.B) {
 }
 
 func BenchmarkBeginTxNoop(b *testing.B) {
+	b.ReportAllocs()
 	ctx := context.Background()
 	db := openTestDB(b)
 	for i := 0; i < b.N; i++ {
