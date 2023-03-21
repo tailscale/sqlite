@@ -911,6 +911,47 @@ func BenchmarkPersist(b *testing.B) {
 	}
 }
 
+func BenchmarkQueryRows100MixedTypes(b *testing.B) {
+	b.ReportAllocs()
+	ctx := context.Background()
+	db := openTestDB(b)
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = ExecScript(conn, `BEGIN;
+		CREATE TABLE t (id INTEGER);
+		COMMIT;`)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for i := 0; i < 100; i++ {
+		if _, err := db.Exec("INSERT INTO t (id) VALUES (?)", i); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ResetTimer()
+
+	ctx = WithPersist(ctx)
+
+	var id int
+	var raw sql.RawBytes
+	for i := 0; i < b.N; i++ {
+		rows, err := db.QueryContext(ctx, "SELECT id, 'hello world some string' FROM t")
+		if err != nil {
+			b.Fatal(err)
+		}
+		for rows.Next() {
+			if err := rows.Scan(&id, &raw); err != nil {
+				b.Fatal(err)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkEmptyExec(b *testing.B) {
 	b.ReportAllocs()
 	ctx := context.Background()
