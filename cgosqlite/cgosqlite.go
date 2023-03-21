@@ -90,12 +90,13 @@ type DB struct {
 	declTypes map[string]string
 }
 
-// cStmt is a wrapper around an sqlite3 *sqlite3_stmt. Except it's stored as
-// uintptr to avoid allocations due to poor interactions between cgo's pointer
-// checker and Go's escape analysis.
+// cStmt is a wrapper around an sqlite3 *sqlite3_stmt. Except rather than
+// storing it as a pointer, it's stored as uintptr to avoid allocations due to
+// poor interactions between cgo's pointer checker and Go's escape analysis.
 //
 // The ptr method returns the value as a pointer, for call sites that haven't
-// yet or don't need the optimization. This lets us migrate incrementally.
+// yet been optimized or don't need the optimization. This lets us migrate
+// incrementally.
 //
 // See http://go/corp/9919.
 type cStmt struct {
