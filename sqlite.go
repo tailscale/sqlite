@@ -375,7 +375,7 @@ type stmt struct {
 
 	// filled on first step only if persist==true
 	colTypes     []sqliteh.ColumnType
-	colDeclTypes []string
+	colDeclTypes []colDeclType
 	colNames     []string
 }
 
@@ -607,6 +607,26 @@ func (s *stmt) bindBasic(debugName any, ordinal int, v any) (found bool, err err
 	}
 }
 
+// colDeclType is whether and how the declared SQLite column type should
+// map to any special handling (as a date, or as a boolean, etc).
+type colDeclType byte
+
+const (
+	declTypeUnknown colDeclType = iota
+	declTypeDateOrTime
+	declTypeBoolean
+)
+
+func colDeclTypeFromString(s string) colDeclType {
+	if strings.EqualFold(s, "DATETIME") || strings.EqualFold(s, "DATE") {
+		return declTypeDateOrTime
+	}
+	if strings.EqualFold(s, "BOOLEAN") {
+		return declTypeBoolean
+	}
+	return declTypeUnknown
+}
+
 type rows struct {
 	stmt   *stmt
 	closed bool
@@ -615,7 +635,7 @@ type rows struct {
 
 	// Filled on first call to Next.
 	colTypes     []sqliteh.ColumnType
-	colDeclTypes []string
+	colDeclTypes []colDeclType
 }
 
 func (r *rows) Columns() []string {
@@ -668,10 +688,10 @@ func (r *rows) Next(dest []driver.Value) error {
 		} else {
 			colCount := r.stmt.stmt.ColumnCount()
 			r.colTypes = make([]sqliteh.ColumnType, colCount)
-			r.colDeclTypes = make([]string, colCount)
+			r.colDeclTypes = make([]colDeclType, colCount)
 			for i := range r.colTypes {
 				r.colTypes[i] = r.stmt.stmt.ColumnType(i)
-				r.colDeclTypes[i] = r.stmt.stmt.ColumnDeclType(i)
+				r.colDeclTypes[i] = colDeclTypeFromString(r.stmt.stmt.ColumnDeclType(i))
 			}
 			if r.stmt.persist {
 				r.stmt.colTypes = r.colTypes
@@ -681,7 +701,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 
 	for i := range dest {
-		if strings.EqualFold(r.colDeclTypes[i], "DATETIME") || strings.EqualFold(r.colDeclTypes[i], "DATE") {
+		if r.colDeclTypes[i] == declTypeDateOrTime {
 			switch r.colTypes[i] {
 			case sqliteh.SQLITE_INTEGER:
 				v := r.stmt.stmt.ColumnInt64(i)
@@ -712,7 +732,7 @@ func (r *rows) Next(dest []driver.Value) error {
 		switch r.colTypes[i] {
 		case sqliteh.SQLITE_INTEGER:
 			val := r.stmt.stmt.ColumnInt64(i)
-			if strings.EqualFold(r.colDeclTypes[i], "BOOLEAN") {
+			if r.colDeclTypes[i] == declTypeBoolean {
 				dest[i] = val > 0
 			} else {
 				dest[i] = val
