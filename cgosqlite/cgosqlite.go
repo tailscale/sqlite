@@ -378,7 +378,7 @@ func (stmt *Stmt) ColumnText(col int) string {
 }
 
 func (stmt *Stmt) ColumnBlob(col int) []byte {
-	res := C.sqlite3_column_blob(stmt.stmt.ptr(), C.int(col))
+	res := C.ts_sqlite3_column_blob(stmt.stmt.int(), C.int(col))
 	if res == nil {
 		return nil
 	}

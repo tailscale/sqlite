@@ -106,6 +106,10 @@ static const unsigned char *ts_sqlite3_column_text(handle_sqlite3_stmt stmt, int
 	return sqlite3_column_text((sqlite3_stmt*)(stmt), iCol);
 }
 
+static const unsigned char *ts_sqlite3_column_blob(handle_sqlite3_stmt stmt, int iCol) {
+	return sqlite3_column_blob((sqlite3_stmt*)(stmt), iCol);
+}
+
 static int ts_sqlite3_column_type(handle_sqlite3_stmt stmt, int iCol) {
 	return sqlite3_column_type((sqlite3_stmt*)(stmt), iCol);
 }

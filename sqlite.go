@@ -739,9 +739,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 		case sqliteh.SQLITE_FLOAT:
 			dest[i] = r.stmt.stmt.ColumnDouble(i)
-		case sqliteh.SQLITE_TEXT:
-			dest[i] = r.stmt.stmt.ColumnText(i)
-		case sqliteh.SQLITE_BLOB:
+		case sqliteh.SQLITE_BLOB, sqliteh.SQLITE_TEXT:
 			dest[i] = r.stmt.stmt.ColumnBlob(i)
 		case sqliteh.SQLITE_NULL:
 			dest[i] = nil
