@@ -23,6 +23,18 @@ static int bind_blob64(handle_sqlite3_stmt stmt, int col, char* str, sqlite3_uin
 	return sqlite3_bind_blob64((sqlite3_stmt*)(stmt), col, str, n, SQLITE_TRANSIENT);
 }
 
+static int ts_sqlite3_bind_double(handle_sqlite3_stmt stmt, int col, double v) {
+	return sqlite3_bind_double((sqlite3_stmt*)(stmt), col, v);
+}
+
+static int ts_sqlite3_bind_int64(handle_sqlite3_stmt stmt, int col, sqlite3_int64 v) {
+	return sqlite3_bind_int64((sqlite3_stmt*)(stmt), col, v);
+}
+
+static int ts_sqlite3_bind_null(handle_sqlite3_stmt stmt, int col) {
+	return sqlite3_bind_null((sqlite3_stmt*)(stmt), col);
+}
+
 // We only need the Go string's memory for the duration of the call,
 // and the GC pins it for us if we pass the gostring_t to C, so we
 // do the conversion here instead of with C.CString.
