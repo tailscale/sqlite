@@ -302,15 +302,15 @@ func (stmt *Stmt) StepResult() (row bool, lastInsertRowID, changes int64, d time
 }
 
 func (stmt *Stmt) BindDouble(col int, val float64) error {
-	return errCode(C.sqlite3_bind_double(stmt.stmt.ptr(), C.int(col), C.double(val)))
+	return errCode(C.ts_sqlite3_bind_double(stmt.stmt.int(), C.int(col), C.double(val)))
 }
 
 func (stmt *Stmt) BindInt64(col int, val int64) error {
-	return errCode(C.sqlite3_bind_int64(stmt.stmt.ptr(), C.int(col), C.sqlite3_int64(val)))
+	return errCode(C.ts_sqlite3_bind_int64(stmt.stmt.int(), C.int(col), C.sqlite3_int64(val)))
 }
 
 func (stmt *Stmt) BindNull(col int) error {
-	return errCode(C.sqlite3_bind_null(stmt.stmt.ptr(), C.int(col)))
+	return errCode(C.ts_sqlite3_bind_null(stmt.stmt.int(), C.int(col)))
 }
 
 func (stmt *Stmt) BindText64(col int, val string) error {
