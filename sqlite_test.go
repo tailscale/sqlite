@@ -857,6 +857,88 @@ func TestSetWALHook(t *testing.T) {
 	}
 }
 
+// Tests that we don't remember the SQLite column types of the first row of the
+// result set (notably the "NULL" type) and re-use it for all subsequent rows
+// like we used to.
+func TestNoStickyColumnTypes(t *testing.T) {
+	db := openTestDB(t)
+	exec(t, db, "CREATE TABLE t (id INTEGER PRIMARY KEY, v1 ANY, v2 ANY)")
+
+	type row []any
+	r := func(v ...any) row { return v }
+	rs := func(v ...row) []row { return v }
+	tests := []struct {
+		name string
+		rows []row
+	}{
+		{"no-null", rs(
+			r("a", "b"),
+			r("foo", "bar"))},
+		{"only-null", rs(
+			r(nil, nil))},
+		{"null-after-string", rs(
+			r("a", "b"),
+			r(nil, "bar"))},
+		{"string-after-null", rs(
+			r(nil, "b"),
+			r("foo", "bar"))},
+		{"null-after-int", rs(
+			r(101, 102),
+			r(nil, 202))},
+		{"int-after-null", rs(
+			r(nil, 102),
+			r(201, 202))},
+		{"changing-types-within-a-column-between-rows", rs(
+			r("foo", nil),
+			r(nil, 2),
+			r(3, "bar"))},
+	}
+
+	// canonical maps from types we get back out from sqlite
+	// to the types we provided in the test cases above.
+	canonical := func(v any) any {
+		switch v := v.(type) {
+		default:
+			return v
+		case []byte:
+			return string(v)
+		case int64:
+			return int(v)
+		}
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exec(t, db, "DELETE FROM t")
+			for primaryKey, r := range tt.rows {
+				exec(t, db, "INSERT INTO t VALUES (?, ?, ?)", append([]any{primaryKey}, r...)...)
+			}
+			rows, err := db.Query("SELECT id, v1, v2 FROM t ORDER BY id")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for rows.Next() {
+				var id int
+				var v1, v2 any
+				err := rows.Scan(&id, &v1, &v2)
+				if err != nil {
+					t.Fatal(err)
+				}
+				v1, v2 = canonical(v1), canonical(v2)
+				want := tt.rows[id]
+				got := row{v1, v2}
+				t.Logf("[%v]: %T, %T", id, v1, v2)
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("row %d got %v; want %v", id, got, want)
+				}
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func BenchmarkWALHookAndExec(b *testing.B) {
 	ctx := context.Background()
 	db := openTestDB(b)
