@@ -374,7 +374,6 @@ type stmt struct {
 	prepCtx context.Context // the context provided to prepare, for tracing
 
 	// filled on first step only if persist==true
-	colTypes     []sqliteh.ColumnType
 	colDeclTypes []colDeclType
 	colNames     []string
 }
@@ -634,7 +633,6 @@ type rows struct {
 	colNames []string // filled on call to Columns
 
 	// Filled on first call to Next.
-	colTypes     []sqliteh.ColumnType
 	colDeclTypes []colDeclType
 }
 
@@ -681,28 +679,24 @@ func (r *rows) Next(dest []driver.Value) error {
 		return io.EOF
 	}
 
-	if r.colTypes == nil {
-		if r.stmt.colTypes != nil {
-			r.colTypes = r.stmt.colTypes
-			r.colDeclTypes = r.stmt.colDeclTypes
-		} else {
-			colCount := r.stmt.stmt.ColumnCount()
-			r.colTypes = make([]sqliteh.ColumnType, colCount)
-			r.colDeclTypes = make([]colDeclType, colCount)
-			for i := range r.colTypes {
-				r.colTypes[i] = r.stmt.stmt.ColumnType(i)
-				r.colDeclTypes[i] = colDeclTypeFromString(r.stmt.stmt.ColumnDeclType(i))
-			}
-			if r.stmt.persist {
-				r.stmt.colTypes = r.colTypes
-				r.stmt.colDeclTypes = r.colDeclTypes
-			}
+	if r.colDeclTypes == nil {
+		r.colDeclTypes = r.stmt.colDeclTypes
+	}
+	if r.colDeclTypes == nil {
+		colCount := r.stmt.stmt.ColumnCount()
+		r.colDeclTypes = make([]colDeclType, colCount)
+		for i := range r.colDeclTypes {
+			r.colDeclTypes[i] = colDeclTypeFromString(r.stmt.stmt.ColumnDeclType(i))
+		}
+		if r.stmt.persist {
+			r.stmt.colDeclTypes = r.colDeclTypes
 		}
 	}
 
 	for i := range dest {
+		colType := r.stmt.stmt.ColumnType(i)
 		if r.colDeclTypes[i] == declTypeDateOrTime {
-			switch r.colTypes[i] {
+			switch colType {
 			case sqliteh.SQLITE_INTEGER:
 				v := r.stmt.stmt.ColumnInt64(i)
 				dest[i] = time.Unix(v, 0)
@@ -729,7 +723,7 @@ func (r *rows) Next(dest []driver.Value) error {
 			}
 			continue
 		}
-		switch r.colTypes[i] {
+		switch colType {
 		case sqliteh.SQLITE_INTEGER:
 			val := r.stmt.stmt.ColumnInt64(i)
 			if r.colDeclTypes[i] == declTypeBoolean {
