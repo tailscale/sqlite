@@ -87,11 +87,19 @@ type Stmt interface {
 	// https://www.sqlite.org/c3ref/clear_bindings.html
 	ClearBindings() error
 	// Step is sqlite3_step.
-	// 	For SQLITE_ROW, Step returns (true, nil).
-	// 	For SQLITE_DONE, Step returns (false, nil).
-	// 	For any error, Step returns (false, err).
+	//
+	// For SQLITE_ROW, Step returns (true, nil).
+	// For SQLITE_DONE, Step returns (false, nil).
+	// For any error, Step returns (false, err).
+	//
+	// As an optional optimization, if colType is provided, up to len(colType)
+	// bytes are populated with the corresponding ColumnType values. If nil or
+	// zero length, or the result is other than (true, nil), it's not used.
+	// If the slice is too short (len is less than the number of columns), then
+	// the results are truncated.
+	//
 	// https://www.sqlite.org/c3ref/step.html
-	Step() (row bool, err error)
+	Step(colType []ColumnType) (row bool, err error)
 	// StepResult executes a one-row query and resets the statment:
 	//	sqlite3_step
 	//	sqlite3_last_insert_rowid + sqlite3_changes
@@ -171,7 +179,7 @@ type Stmt interface {
 
 // ColumnType are constants for each of the SQLite datatypes.
 // https://www.sqlite.org/c3ref/c_blob.html
-type ColumnType int
+type ColumnType byte
 
 const (
 	SQLITE_INTEGER ColumnType = 1

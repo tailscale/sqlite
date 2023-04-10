@@ -122,7 +122,7 @@ func TestPool(t *testing.T) {
 	}
 
 	stmt = rx1.Prepare("SELECT count(*) FROM t")
-	if row, err := stmt.Step(); err != nil {
+	if row, err := stmt.Step(nil); err != nil {
 		t.Fatal(err)
 	} else if !row {
 		t.Fatal("no row from select count")

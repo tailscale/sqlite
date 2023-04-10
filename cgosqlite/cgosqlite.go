@@ -272,8 +272,12 @@ func (stmt *Stmt) ColumnTableName(col int) string {
 	return C.GoString((*C.char)(unsafe.Pointer(C.sqlite3_column_table_name(stmt.stmt.ptr(), C.int(col)))))
 }
 
-func (stmt *Stmt) Step() (row bool, err error) {
-	res := C.ts_sqlite3_step(stmt.stmt.int())
+func (stmt *Stmt) Step(colType []sqliteh.ColumnType) (row bool, err error) {
+	var ptr *C.char
+	if len(colType) > 0 {
+		ptr = (*C.char)(unsafe.Pointer(&colType[0]))
+	}
+	res := C.ts_sqlite3_step(stmt.stmt.int(), ptr, C.int(len(colType)))
 	switch res {
 	case C.SQLITE_ROW:
 		return true, nil
