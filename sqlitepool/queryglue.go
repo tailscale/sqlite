@@ -49,7 +49,7 @@ func QueryRow(db sqliteh.DB, sql string, args ...any) *Row {
 	if err := bindAll(db, stmt, args...); err != nil {
 		return &Row{err: fmt.Errorf("QueryRow: %w", err)}
 	}
-	row, err := stmt.Step()
+	row, err := stmt.Step(nil)
 	if err != nil {
 		msg := db.ErrMsg()
 		stmt.Finalize()
@@ -104,7 +104,7 @@ func (rx *Rx) QueryRow(sql string, args ...any) *Row {
 	if err := bindAll(rx.conn.db, stmt, args...); err != nil {
 		return &Row{err: fmt.Errorf("QueryRow: %w", err)}
 	}
-	row, err := stmt.Step()
+	row, err := stmt.Step(nil)
 	if err != nil {
 		msg := rx.DB().ErrMsg()
 		stmt.ResetAndClear()
@@ -137,7 +137,7 @@ func (rs *Rows) Next() bool {
 	if rs.err != nil {
 		return false
 	}
-	row, err := rs.stmt.Step()
+	row, err := rs.stmt.Step(nil)
 	if err != nil {
 		rs.err = fmt.Errorf("QueryRow.Next: %w: %v", err, rs.stmt.DBHandle().ErrMsg())
 		return false

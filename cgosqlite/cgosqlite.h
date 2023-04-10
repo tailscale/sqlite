@@ -110,8 +110,16 @@ static void ts_sqlite3_wal_hook_go(sqlite3* db) {
 	sqlite3_wal_hook(db, wal_callback_into_go, 0);
 }
 
-static int ts_sqlite3_step(handle_sqlite3_stmt stmt) {
-	return sqlite3_step((sqlite3_stmt*)(stmt));
+static int ts_sqlite3_step(handle_sqlite3_stmt stmth, char* outType , int outTypeLen) {
+	sqlite3_stmt* stmt = (sqlite3_stmt*)(stmth);
+	int res = sqlite3_step(stmt);
+	if (res == SQLITE_ROW && outTypeLen > 0) {
+		int cols = sqlite3_column_count(stmt);
+		for (int i = 0; i < cols && i < outTypeLen; i++) {
+			outType[i] = (char) sqlite3_column_type(stmt, i);
+		}
+	}
+	return res;
 }
 
 static const unsigned char *ts_sqlite3_column_text(handle_sqlite3_stmt stmt, int iCol) {

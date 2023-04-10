@@ -229,7 +229,7 @@ func ExecScript(db sqliteh.DB, queries string) error {
 			return fmt.Errorf("ExecScript: %w: %v, in remaining script: %s", err, db.ErrMsg(), queries)
 		}
 		queries = rem
-		_, err = stmt.Step()
+		_, err = stmt.Step(nil)
 		if err != nil {
 			err = fmt.Errorf("ExecScript: %w: %s: %v", err, stmt.SQL(), db.ErrMsg())
 		}

@@ -630,6 +630,13 @@ type rows struct {
 	stmt   *stmt
 	closed bool
 
+	// colType is the column types for Step to fill on each row. We only use 23
+	// as it packs well with the closed bool byte above (24 bytes total, same as
+	// a slice) and it's uncommon for queries to select so many columns. But if
+	// they do, we still work: we just query the column type via cgo on each
+	// row. So a bit slower, but fine.
+	colType [23]sqliteh.ColumnType
+
 	colNames []string // filled on call to Columns
 
 	// Filled on first call to Next.
@@ -671,7 +678,7 @@ func (r *rows) Next(dest []driver.Value) error {
 	if r.closed {
 		return errors.New("sqlite rows result already closed")
 	}
-	hasRow, err := r.stmt.stmt.Step()
+	hasRow, err := r.stmt.stmt.Step(r.colType[:])
 	if err != nil {
 		return r.stmt.reserr("Rows.Next", err)
 	}
@@ -694,7 +701,17 @@ func (r *rows) Next(dest []driver.Value) error {
 	}
 
 	for i := range dest {
-		colType := r.stmt.stmt.ColumnType(i)
+		var colType sqliteh.ColumnType
+		if i < len(r.colType) {
+			// Common case, for the first couple dozen columns.
+			colType = r.colType[i]
+		} else {
+			// If it's a really wide query, then call into
+			// cgo for columns past the length of
+			// r.colType.
+			colType = r.stmt.stmt.ColumnType(i)
+		}
+
 		if r.colDeclTypes[i] == declTypeDateOrTime {
 			switch colType {
 			case sqliteh.SQLITE_INTEGER:
@@ -808,7 +825,7 @@ func ExecScript(sqlconn SQLConn, queries string) error {
 				return reserr(c.db, "ExecScript", queries, err)
 			}
 			queries = rem
-			_, err = cstmt.Step()
+			_, err = cstmt.Step(nil)
 			cstmt.Finalize()
 			if err != nil {
 				// TODO(crawshaw): consider checking sqlite3_txn_state
