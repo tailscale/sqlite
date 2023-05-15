@@ -8,6 +8,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -37,7 +38,7 @@ type Tracer struct {
 	// in the steady state, a sync.Map would be a faster object
 	// here.
 	mu      sync.RWMutex
-	queries map[string]*queryStats // query -> stats
+	queries map[string]*queryStats // normalized query -> stats
 }
 
 type connStats struct {
@@ -80,7 +81,18 @@ type queryStats struct {
 	// TODO lastErr atomic.Value
 }
 
+var rxRemoveInClause = regexp.MustCompile(`(?i)\s+in\s*\((?:\s*\d+\s*(?:,\s*\d+\s*)*)\)`)
+
+func normalizeQuery(q string) string {
+	if strings.Contains(q, " in (") || strings.Contains(q, " IN (") {
+		q = rxRemoveInClause.ReplaceAllString(q, " IN (...)")
+	}
+	return q
+}
+
 func (t *Tracer) queryStats(query string) *queryStats {
+	query = normalizeQuery(query)
+
 	t.mu.RLock()
 	stats := t.queries[query]
 	t.mu.RUnlock()

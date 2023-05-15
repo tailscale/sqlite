@@ -52,3 +52,23 @@ func TestActiveTxs(t *testing.T) {
 		t.Fatalf("want %q, got:\n%s", want, s)
 	}
 }
+
+func TestNormalizeQuery(t *testing.T) {
+	tests := []struct {
+		q, want string
+	}{
+		{"", ""},
+		{"SELECT 1", "SELECT 1"},
+		{"DELETE FROM foo.Bar WHERE UnixNano in (SELECT id from FOO)", "DELETE FROM foo.Bar WHERE UnixNano in (SELECT id from FOO)"},
+		{"DELETE FROM foo.Bar WHERE UnixNano in (1)", "DELETE FROM foo.Bar WHERE UnixNano IN (...)"},
+		{"DELETE FROM foo.Bar WHERE UnixNano in (1, 2, 3)", "DELETE FROM foo.Bar WHERE UnixNano IN (...)"},
+		{"DELETE FROM foo.Bar WHERE UnixNano in (1,2,3)", "DELETE FROM foo.Bar WHERE UnixNano IN (...)"},
+		{"DELETE FROM foo.Bar WHERE UnixNano in (1,2,3 )", "DELETE FROM foo.Bar WHERE UnixNano IN (...)"},
+		{"DELETE FROM foo.Bar WHERE UnixNano in ( 1 , 2 , 3 )", "DELETE FROM foo.Bar WHERE UnixNano IN (...)"},
+	}
+	for _, tt := range tests {
+		if got := normalizeQuery(tt.q); got != tt.want {
+			t.Errorf("normalizeQuery(%#q) = %#q; want %#q", tt.q, got, tt.want)
+		}
+	}
+}
