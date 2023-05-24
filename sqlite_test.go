@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"expvar"
 	"fmt"
 	"os"
 	"reflect"
@@ -56,6 +57,23 @@ func configDB(t testing.TB, db *sql.DB) {
 	t.Cleanup(func() { db.Close() })
 }
 
+func getUsesAfterClose() (ret int64) {
+	UsesAfterClose.Do(func(kv expvar.KeyValue) {
+		ret += kv.Value.(*expvar.Int).Value()
+	})
+	return ret
+}
+
+func checkBadUsageDB(t testing.TB, db *sql.DB) {
+	initial := getUsesAfterClose()
+	t.Cleanup(func() {
+		final := getUsesAfterClose()
+		if initial != final {
+			t.Errorf("%d uses after finalization != %d final value", initial, final)
+		}
+	})
+}
+
 func openTestDB(t testing.TB) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", "file:"+t.TempDir()+"/test.db")
@@ -63,6 +81,7 @@ func openTestDB(t testing.TB) *sql.DB {
 		t.Fatal(err)
 	}
 	configDB(t, db)
+	checkBadUsageDB(t, db)
 	return db
 }
 
@@ -936,6 +955,36 @@ func TestNoStickyColumnTypes(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestUsesAfterClose(t *testing.T) {
+	ctx := context.Background()
+
+	// Clean up metric after we're done testing it.
+	t.Cleanup(func() {
+		UsesAfterClose.Init()
+	})
+
+	connector := Connector("file:"+t.TempDir()+"/test.db", nil, nil)
+	sqlConn, err := connector.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := sqlConn.(*conn)
+
+	initial := getUsesAfterClose()
+
+	// Close the conn, then use something from the conn which triggers our
+	// "used after close" logic.
+	conn.Close()
+	if _, err = conn.PrepareContext(ctx, "SELECT 1;"); err == nil {
+		t.Error("expected error, got nil")
+	}
+
+	final := getUsesAfterClose()
+	if final != initial+1 {
+		t.Errorf("got UsesAfterClose=%d, want %d", final, initial+1)
 	}
 }
 
