@@ -72,6 +72,7 @@ import (
 	"database/sql/driver"
 	"encoding"
 	"errors"
+	"expvar"
 	"fmt"
 	"io"
 	"reflect"
@@ -101,6 +102,15 @@ func init() {
 }
 
 var maxConnID atomic.Int32
+
+// UsesAfterClose is a metric that is incremented every time an operation is
+// attempted on a connection after Close has already been called. The keys are
+// internal identifiers for the code path that incremented a counter.
+var UsesAfterClose expvar.Map
+
+// ErrClosed is returned when an operation is attempted on a connection after
+// Close has already been called.
+var ErrClosed = errors.New("sqlite3: already closed")
 
 type drv struct{}
 
@@ -172,16 +182,25 @@ type conn struct {
 	stmts    map[string]*stmt // persisted statements
 	txState  txState
 	readOnly bool
+	closed   atomic.Bool
 }
 
 func (c *conn) Prepare(query string) (driver.Stmt, error) { panic("deprecated, unused") }
 func (c *conn) Begin() (driver.Tx, error)                 { panic("deprecated, unused") }
 func (c *conn) Close() error {
+	// Don't double-close
+	if !c.closed.CompareAndSwap(false, true) {
+		UsesAfterClose.Add("Close", 1)
+		return nil
+	}
+
 	for q, s := range c.stmts {
 		s.stmt.Finalize()
+		s.closed.Store(true)
 		delete(c.stmts, q)
 	}
-	return reserr(c.db, "Conn.Close", "", c.db.Close())
+	err := reserr(c.db, "Conn.Close", "", c.db.Close())
+	return err
 }
 func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
 	persist := ctx.Value(persistQuery{}) != nil
@@ -189,12 +208,24 @@ func (c *conn) PrepareContext(ctx context.Context, query string) (driver.Stmt, e
 }
 
 func (c *conn) prepare(ctx context.Context, query string, persist bool) (s *stmt, err error) {
+	if c.closed.Load() {
+		UsesAfterClose.Add("prepare", 1)
+		return nil, ErrClosed
+	}
+
 	query = strings.TrimSpace(query)
 	if s := c.stmts[query]; s != nil {
-		s.prepCtx = ctx
-
 		// don't hand the same statement out twice; this is re-added on s.Close
 		delete(c.stmts, query)
+
+		s.prepCtx = ctx
+		if !s.closed.CompareAndSwap(true, false) {
+			// We'd previously set this to 'false', indicating that
+			// this stmt is in-use. Return an error instead of
+			// reusing the stmt.
+			return nil, ErrClosed
+		}
+
 		return s, nil
 	}
 	if c.tracer != nil {
@@ -262,6 +293,11 @@ func (c *conn) execInternal(ctx context.Context, query string) error {
 }
 
 func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	if c.closed.Load() {
+		UsesAfterClose.Add("BeginTx", 1)
+		return nil, ErrClosed
+	}
+
 	const LevelSerializable = 6 // matches the sql package constant
 	if opts.Isolation != 0 && opts.Isolation != LevelSerializable {
 		return nil, errors.New("github.com/tailscale/sqlite driver only supports serializable isolation level")
@@ -336,6 +372,11 @@ type connTx struct {
 }
 
 func (tx *connTx) Commit() error {
+	if tx.conn.closed.Load() {
+		UsesAfterClose.Add("tx.Commit", 1)
+		return ErrClosed
+	}
+
 	err := tx.conn.txEnd(context.Background(), "COMMIT")
 	if tx.conn.tracer != nil {
 		tx.conn.tracer.Commit(tx.conn.id, err)
@@ -344,6 +385,11 @@ func (tx *connTx) Commit() error {
 }
 
 func (tx *connTx) Rollback() error {
+	if tx.conn.closed.Load() {
+		UsesAfterClose.Add("tx.Rollback", 1)
+		return ErrClosed
+	}
+
 	err := tx.conn.txEnd(context.Background(), "ROLLBACK")
 	if tx.conn.tracer != nil {
 		tx.conn.tracer.Rollback(tx.conn.id, err)
@@ -371,8 +417,9 @@ type stmt struct {
 	conn    *conn
 	stmt    sqliteh.Stmt
 	query   string
-	persist bool // true if stmt is cached and lives beyond Close
-	bound   bool // true if stmt has parameters bound
+	persist bool        // true if stmt is cached and lives beyond Close
+	bound   bool        // true if stmt has parameters bound
+	closed  atomic.Bool // true after Close if persist==false
 
 	numInput int // filled on first NumInput only if persist==true
 
@@ -386,6 +433,10 @@ type stmt struct {
 func (s *stmt) reserr(loc string, err error) error { return reserr(s.conn.db, loc, s.query, err) }
 
 func (s *stmt) NumInput() int {
+	if s.closed.Load() {
+		UsesAfterClose.Add("stmt.NumInput", 1)
+		return 0
+	}
 	if s.persist {
 		if s.numInput == -1 {
 			s.numInput = s.stmt.BindParameterCount()
@@ -396,6 +447,17 @@ func (s *stmt) NumInput() int {
 }
 
 func (s *stmt) Close() error {
+	// Always set the 'closed' boolean, even for a persisted query; this is
+	// set from false -> true in prepare(), above.
+	if s.conn.closed.Load() {
+		UsesAfterClose.Add("Stmt.Close_conn", 1)
+		return nil
+	}
+	if !s.closed.CompareAndSwap(false, true) {
+		UsesAfterClose.Add("Stmt.Close", 1)
+		return nil
+	}
+
 	// We return this statement to the conn only if it's persistent, and
 	// only if there's not already a statement with the same query already
 	// cached there.
@@ -418,6 +480,10 @@ func (s *stmt) Exec(args []driver.Value) (driver.Result, error) { panic("depreca
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error)  { panic("deprecated, unused") }
 
 func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	if s.closed.Load() {
+		UsesAfterClose.Add("stmt.ExecContext", 1)
+		return nil, ErrClosed
+	}
 	if err := s.resetAndClear(); err != nil {
 		return nil, s.reserr("Stmt.Exec(Reset)", err)
 	}
@@ -464,6 +530,10 @@ func (res *stmtResult) LastInsertId() (int64, error) { return res.lastInsertID, 
 func (res *stmtResult) RowsAffected() (int64, error) { return res.rowsAffected, nil }
 
 func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if s.closed.Load() {
+		UsesAfterClose.Add("stmt.QueryContext", 1)
+		return nil, ErrClosed
+	}
 	if err := s.resetAndClear(); err != nil {
 		return nil, s.reserr("Stmt.Query(Reset)", err)
 	}
@@ -665,6 +735,10 @@ func (r *rows) Columns() []string {
 	if r.closed {
 		panic("Columns called after Rows was closed")
 	}
+	if r.stmt.closed.Load() {
+		UsesAfterClose.Add("rows.Columns", 1)
+		return nil
+	}
 	if r.colNames == nil {
 		if r.stmt.colNames != nil {
 			r.colNames = r.stmt.colNames
@@ -685,6 +759,10 @@ func (r *rows) Close() error {
 	if r.closed {
 		return errors.New("sqlite rows result already closed")
 	}
+	if r.stmt.closed.Load() {
+		UsesAfterClose.Add("rows.Close", 1)
+		return ErrClosed
+	}
 	r.closed = true
 	if err := r.stmt.resetAndClear(); err != nil {
 		return r.stmt.reserr("Rows.Close(Reset)", err)
@@ -695,6 +773,10 @@ func (r *rows) Close() error {
 func (r *rows) Next(dest []driver.Value) error {
 	if r.closed {
 		return errors.New("sqlite rows result already closed")
+	}
+	if r.stmt.closed.Load() {
+		UsesAfterClose.Add("rows.Next", 1)
+		return ErrClosed
 	}
 	hasRow, err := r.stmt.stmt.Step(r.colType[:])
 	if err != nil {
