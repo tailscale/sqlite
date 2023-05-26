@@ -275,6 +275,32 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 // Raw is so ConnInitFunc can cast to SQLConn.
 func (c *conn) Raw(fn func(any) error) error { return fn(c) }
 
+// ResetSession is called prior to executing a query on the connection
+// if the connection has been used before. If the driver returns ErrBadConn
+// the connection is discarded.
+func (c *conn) ResetSession(ctx context.Context) error {
+	if c.txState != txStateNone {
+		return errors.New("cannot ResetSession on a connection with an active transaction")
+	}
+
+	// ensure that all prepared statements are reset and unbound
+	if c.stmts != nil {
+		for _, s := range c.stmts {
+			if err := s.resetAndClear(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// IsValid is called prior to placing the connection into the
+// connection pool. The connection will be discarded if false is returned.
+func (c *conn) IsValid() bool {
+	return true
+}
+
 type readOnlyKey struct{}
 
 // ReadOnly applies the query_only pragma to the connection.
