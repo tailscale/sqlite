@@ -1072,3 +1072,83 @@ func BenchmarkBeginTxNoop(b *testing.B) {
 // TODO(crawshaw): test TextMarshaler
 // TODO(crawshaw): test named types
 // TODO(crawshaw): check coverage
+
+// This tests that we don't give the same *stmt to two different callers that
+// prepare the same persistent query. See:
+//
+//	https://github.com/tailscale/sqlite/issues/73
+func TestPrepareReuse(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	sqlConn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlConn.Close()
+
+	// Insert a bunch of values into a table that we'll query to get
+	// multiple rows back.
+	err = ExecScript(sqlConn,
+		`BEGIN;
+		CREATE TABLE t (c);
+		INSERT INTO t VALUES (1), (2), (3), (4);
+		COMMIT;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx = WithPersist(ctx)
+
+	// Calling PrepareContext twice in a row used to return the same
+	// statement to both callers.
+	const query = "SELECT c FROM t ORDER BY c;"
+	stmt1, err := sqlConn.PrepareContext(ctx, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt1.Close()
+	stmt2, err := sqlConn.PrepareContext(ctx, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stmt2.Close()
+
+	rows1, err := stmt1.QueryContext(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows1.Close()
+	rows2, err := stmt2.QueryContext(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows2.Close()
+
+	assertResult := func(rows *sql.Rows, want int) {
+		t.Helper()
+		var num int
+		if err := rows.Scan(&num); err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		if num != want {
+			t.Fatalf("num=%d, want %d", num, want)
+		}
+	}
+
+	// Each set of rows should get a full copy of the query results; if
+	// these are incorrectly shared, then advancing one Rows will change
+	// the results from the other.
+	for i := 0; i < 4; i++ {
+		if !rows1.Next() {
+			t.Fatalf("[1] pass %d: Next=false", i)
+		}
+		if !rows2.Next() {
+			t.Fatalf("[2] pass %d: Next=false", i)
+		}
+
+		// rows2 should be different from row1 and should return a
+		// different set of values.
+		assertResult(rows1, i+1)
+		assertResult(rows2, i+1)
+	}
+}

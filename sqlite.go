@@ -192,6 +192,9 @@ func (c *conn) prepare(ctx context.Context, query string, persist bool) (s *stmt
 	query = strings.TrimSpace(query)
 	if s := c.stmts[query]; s != nil {
 		s.prepCtx = ctx
+
+		// don't hand the same statement out twice; this is re-added on s.Close
+		delete(c.stmts, query)
 		return s, nil
 	}
 	if c.tracer != nil {
@@ -234,10 +237,12 @@ func (c *conn) prepare(ctx context.Context, query string, persist bool) (s *stmt
 		return s, nil
 	}
 
+	// NOTE: don't add the statement to c.stmts here, since we could return
+	// it to another caller before Close is called; it's added to the
+	// c.stmts map on Close.
 	if c.stmts == nil {
 		c.stmts = make(map[string]*stmt)
 	}
-	c.stmts[query] = s
 	return s, nil
 }
 
@@ -391,8 +396,21 @@ func (s *stmt) NumInput() int {
 }
 
 func (s *stmt) Close() error {
-	if s.persist {
-		return s.reserr("Stmt.Close", s.resetAndClear())
+	// We return this statement to the conn only if it's persistent, and
+	// only if there's not already a statement with the same query already
+	// cached there.
+	shouldPersist := s.persist
+	if shouldPersist {
+		if _, alreadyPersisted := s.conn.stmts[s.query]; alreadyPersisted {
+			shouldPersist = false
+		}
+	}
+	if shouldPersist {
+		err := s.reserr("Stmt.Close", s.resetAndClear())
+		if err == nil {
+			s.conn.stmts[s.query] = s
+		}
+		return err
 	}
 	return s.reserr("Stmt.Close", s.stmt.Finalize())
 }
