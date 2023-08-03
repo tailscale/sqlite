@@ -5,10 +5,6 @@
 typedef uintptr_t handle_sqlite3_stmt; // a *sqlite3_stmt
 typedef uintptr_t handle_sqlite3; // a *sqlite3 (DB conn)
 
-// Forward decls because the warnings make debugging painful.
-size_t _GoStringLen(_GoString_ s);
-const char *_GoStringPtr(_GoString_ s);
-
 // Helper methods to deal with int <-> pointer pain.
 
 static int bind_text64(handle_sqlite3_stmt stmt, int col, const char* str, sqlite3_uint64 len) {
