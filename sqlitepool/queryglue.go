@@ -259,17 +259,8 @@ func scanAll(stmt sqliteh.Stmt, dest ...any) error {
 func bindAll(db sqliteh.DB, stmt sqliteh.Stmt, args ...any) error {
 	for i, arg := range args {
 		if err := bind(db, stmt, i+1, arg); err != nil {
-			// This is counter-intuitive, but you get much better
-			// error messages from a panic here than returning the
-			// error.
-			//
-			// The problem is you ~always need a stack trace to
-			// figure out which SQL query went wrong. By panicing
-			// here you get it.
-			//
-			// This also makes some sense, as a bind error here is
-			// ~always a program error, not something recoverable.
-			panic(err)
+			stmt.ResetAndClear()
+			return fmt.Errorf("bind: %d, %q: %w", i, arg, err)
 		}
 	}
 	return nil
