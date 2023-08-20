@@ -33,7 +33,14 @@ type conn struct {
 //
 // For each connection, initFn is called to initialize the connection.
 // Tracer is used to report statistics about the use of the Pool.
-func NewPool(filename string, poolSize int, initFn func(sqliteh.DB) error, tracer sqliteh.Tracer) (p *Pool, err error) {
+func NewPool(filename string, poolSize int, initFn func(sqliteh.DB) error, tracer sqliteh.Tracer) (_ *Pool, err error) {
+	p := &Pool{
+		poolSize:    poolSize,
+		rwConnFree:  make(chan *conn, 1),
+		roConnsFree: make(chan *conn, poolSize-1),
+		tracer:      tracer,
+		closed:      make(chan struct{}),
+	}
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("sqlitepool.NewPool: %w", err)
@@ -42,6 +49,7 @@ func NewPool(filename string, poolSize int, initFn func(sqliteh.DB) error, trace
 				conn.db.Close()
 			default:
 			}
+			close(p.roConnsFree)
 			for conn := range p.roConnsFree {
 				conn.db.Close()
 			}
@@ -49,13 +57,6 @@ func NewPool(filename string, poolSize int, initFn func(sqliteh.DB) error, trace
 	}()
 	if poolSize < 2 {
 		return nil, fmt.Errorf("poolSize=%d is too small", poolSize)
-	}
-	p = &Pool{
-		poolSize:    poolSize,
-		rwConnFree:  make(chan *conn, 1),
-		roConnsFree: make(chan *conn, poolSize-1),
-		tracer:      tracer,
-		closed:      make(chan struct{}),
 	}
 	for i := 0; i < poolSize; i++ {
 		db, err := cgosqlite.Open(filename, sqliteh.OpenFlagsDefault, "")
