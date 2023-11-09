@@ -27,6 +27,7 @@ package cgosqlite
 // #cgo CFLAGS: -DSQLITE_ENABLE_PREUPDATE_HOOK
 // #cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA
 // #cgo CFLAGS: -DSQLITE_ENABLE_STAT4
+// #cgo CFLAGS: -DSQLITE_ENABLE_DBSTAT_VTAB=1
 // #cgo CFLAGS: -DHAVE_USLEEP=1
 // #cgo linux,!android LDFLAGS: -ldl -lm -lrt
 // #cgo linux CFLAGS: -std=c99
