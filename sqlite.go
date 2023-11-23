@@ -490,6 +490,14 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if err := s.bindAll(args); err != nil {
 		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
+	if ctx.Value(queryCancelKey{}) != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+
+		db := s.stmt.DBHandle()
+		go func() { <-ctx.Done(); db.Interrupt() }()
+	}
 	row, lastInsertRowID, changes, duration, err := s.stmt.StepResult()
 	s.bound = false // StepResult resets the query
 	err = s.reserr("Stmt.Exec", err)
@@ -540,7 +548,13 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 	if err := s.bindAll(args); err != nil {
 		return nil, err
 	}
-	return &rows{stmt: s}, nil
+	cancel := func() {}
+	if ctx.Value(queryCancelKey{}) != nil {
+		ctx, cancel = context.WithCancel(ctx)
+		db := s.stmt.DBHandle()
+		go func() { <-ctx.Done(); db.Interrupt() }()
+	}
+	return &rows{stmt: s, cancel: cancel}, nil
 }
 
 func (s *stmt) resetAndClear() error {
@@ -717,6 +731,7 @@ func colDeclTypeFromString(s string) colDeclType {
 type rows struct {
 	stmt   *stmt
 	closed bool
+	cancel context.CancelFunc // call when query ends
 
 	// colType is the column types for Step to fill on each row. We only use 23
 	// as it packs well with the closed bool byte above (24 bytes total, same as
@@ -764,6 +779,7 @@ func (r *rows) Close() error {
 		return ErrClosed
 	}
 	r.closed = true
+	r.cancel()
 	if err := r.stmt.resetAndClear(); err != nil {
 		return r.stmt.reserr("Rows.Close(Reset)", err)
 	}
@@ -999,3 +1015,13 @@ func WithPersist(ctx context.Context) context.Context {
 
 // persistQuery is used as a context value.
 type persistQuery struct{}
+
+// WithQueryCancel makes a ctx that instructs the sqlite driver to explicitly
+// interrupt a running query if its argument context ends.  By default, without
+// this option, queries will only check the context between steps.
+func WithQueryCancel(ctx context.Context) context.Context {
+	return context.WithValue(ctx, queryCancelKey{}, queryCancelKey{})
+}
+
+// queryCancelKey is a context key for query context enforcement.
+type queryCancelKey struct{}

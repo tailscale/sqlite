@@ -398,6 +398,45 @@ func TestWithPersist(t *testing.T) {
 	}
 }
 
+func TestWithQueryCancel(t *testing.T) {
+	// This test query runs forever until interrupted.
+	const testQuery = `WITH RECURSIVE inf(n) AS (
+    SELECT 1
+    UNION ALL
+    SELECT n+1 FROM inf
+) SELECT * FROM inf WHERE n = 0`
+
+	db := openTestDB(t)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		rows, err := db.QueryContext(WithQueryCancel(ctx), testQuery)
+		if err != nil {
+			t.Fatalf("QueryContext: unexpected error: %v", err)
+		}
+		for rows.Next() {
+			t.Error("Next result available before timeout")
+		}
+		if err := rows.Err(); err == nil {
+			t.Error("Rows did not report an error")
+		} else if !strings.Contains(err.Error(), "SQLITE_INTERRUPT") {
+			t.Errorf("Rows err=%v, want SQLITE_INTERRUPT", err)
+		}
+	}()
+
+	select {
+	case <-done:
+		// OK
+	case <-time.After(30 * time.Second):
+		t.Fatal("Timeout waiting for query to end")
+	}
+}
+
 func TestErrors(t *testing.T) {
 	db := openTestDB(t)
 	exec(t, db, "CREATE TABLE t (c)")
