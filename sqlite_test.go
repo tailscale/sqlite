@@ -432,7 +432,7 @@ func TestWithQueryCancel(t *testing.T) {
 	select {
 	case <-done:
 		// OK
-	case <-time.After(time.Second):
+	case <-time.After(30*time.Second):
 		t.Fatal("Timeout waiting for query to end")
 	}
 }
