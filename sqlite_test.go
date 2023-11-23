@@ -420,7 +420,7 @@ func TestWithQueryCancel(t *testing.T) {
 			t.Fatalf("QueryContext: unexpected error: %v", err)
 		}
 		for rows.Next() {
-			t.Fatal("Next result available before timeout")
+			t.Error("Next result available before timeout")
 		}
 		if err := rows.Err(); err == nil {
 			t.Error("Rows did not report an error")
