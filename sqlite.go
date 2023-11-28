@@ -779,7 +779,7 @@ func (r *rows) Close() error {
 		return ErrClosed
 	}
 	r.closed = true
-	r.cancel()
+	defer r.cancel()
 	if err := r.stmt.resetAndClear(); err != nil {
 		return r.stmt.reserr("Rows.Close(Reset)", err)
 	}
