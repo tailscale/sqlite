@@ -490,13 +490,22 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if err := s.bindAll(args); err != nil {
 		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
+	done := make(chan struct{})
 	if ctx.Value(queryCancelKey{}) != nil {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithCancel(ctx)
-		defer cancel()
+		pctx, pcancel := context.WithCancel(ctx)
+		defer pcancel()
 
 		db := s.stmt.DBHandle()
-		go func() { <-ctx.Done(); db.Interrupt() }()
+		go func() {
+			defer close(done)
+			started := pctx.Err() == nil
+			<-pctx.Done()
+			if ctx.Err() != nil && started {
+				db.Interrupt()
+			}
+		}()
+	} else {
+		close(done)
 	}
 	row, lastInsertRowID, changes, duration, err := s.stmt.StepResult()
 	s.bound = false // StepResult resets the query
@@ -508,6 +517,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return nil, err
 	}
 	_ = row // TODO: return error if exec on query which returns rows?
+	<-done
 	return getStmtResult(lastInsertRowID, changes), nil
 }
 
@@ -549,12 +559,23 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		return nil, err
 	}
 	cancel := func() {}
+	done := make(chan struct{})
 	if ctx.Value(queryCancelKey{}) != nil {
-		ctx, cancel = context.WithCancel(ctx)
+		pctx, pcancel := context.WithCancel(ctx)
+		cancel = pcancel
 		db := s.stmt.DBHandle()
-		go func() { <-ctx.Done(); db.Interrupt() }()
+		go func() {
+			defer close(done)
+			started := pctx.Err() == nil
+			<-pctx.Done()
+			if ctx.Err() != nil && started {
+				db.Interrupt()
+			}
+		}()
+	} else {
+		close(done)
 	}
-	return &rows{stmt: s, cancel: cancel}, nil
+	return &rows{stmt: s, cancel: cancel, done: done}, nil
 }
 
 func (s *stmt) resetAndClear() error {
@@ -732,6 +753,7 @@ type rows struct {
 	stmt   *stmt
 	closed bool
 	cancel context.CancelFunc // call when query ends
+	done   chan struct{}      // closed when cancellation is done
 
 	// colType is the column types for Step to fill on each row. We only use 23
 	// as it packs well with the closed bool byte above (24 bytes total, same as
@@ -779,7 +801,8 @@ func (r *rows) Close() error {
 		return ErrClosed
 	}
 	r.closed = true
-	defer r.cancel()
+	r.cancel()
+	<-r.done
 	if err := r.stmt.resetAndClear(); err != nil {
 		return r.stmt.reserr("Rows.Close(Reset)", err)
 	}
