@@ -13,6 +13,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -417,7 +418,8 @@ func TestWithQueryCancel(t *testing.T) {
 
 		rows, err := db.QueryContext(WithQueryCancel(ctx), testQuery)
 		if err != nil {
-			t.Fatalf("QueryContext: unexpected error: %v", err)
+			t.Errorf("QueryContext: unexpected error: %v", err)
+			return
 		}
 		for rows.Next() {
 			t.Error("Next result available before timeout")
@@ -434,6 +436,37 @@ func TestWithQueryCancel(t *testing.T) {
 		// OK
 	case <-time.After(30 * time.Second):
 		t.Fatal("Timeout waiting for query to end")
+	}
+}
+
+func TestWithQueryCancel_OK(t *testing.T) {
+	db := openTestDB(t)
+
+	for i := 0; i < 100; i++ {
+		t.Run(strconv.Itoa(i+1), func(t *testing.T) {
+			// Set a timeout that is much longer than the expected runtime of the query.
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			rows, err := db.QueryContext(WithQueryCancel(ctx), `select 1`)
+			if err != nil {
+				t.Fatalf("QueryContext: unexpected error: %v", err)
+			}
+			for rows.Next() {
+				var z int
+				if err := rows.Scan(&z); err != nil {
+					t.Fatalf("Scan: %v", err)
+				} else if z != 1 {
+					t.Errorf("Scan: got %d, want 1", z)
+				}
+			}
+			if err := rows.Err(); err != nil {
+				t.Errorf("Err reported %v", err)
+			}
+			if err := rows.Close(); err != nil {
+				t.Errorf("Close reported %v", err)
+			}
+		})
 	}
 }
 

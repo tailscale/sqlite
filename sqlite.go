@@ -491,12 +491,23 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
 	if ctx.Value(queryCancelKey{}) != nil {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithCancel(ctx)
-		defer cancel()
+		pctx, pcancel := context.WithCancel(ctx)
+		defer pcancel()
 
 		db := s.stmt.DBHandle()
-		go func() { <-ctx.Done(); db.Interrupt() }()
+		go func() {
+			running := pctx.Err() == nil
+			select {
+			case <-pctx.Done():
+				// OK, we fell off the end of the exec
+			case <-ctx.Done():
+				// The input context ended; if we haven't already done a cleanup on
+				// this query, interrupt it.
+				if running {
+					db.Interrupt()
+				}
+			}
+		}()
 	}
 	row, lastInsertRowID, changes, duration, err := s.stmt.StepResult()
 	s.bound = false // StepResult resets the query
@@ -550,9 +561,22 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 	}
 	cancel := func() {}
 	if ctx.Value(queryCancelKey{}) != nil {
-		ctx, cancel = context.WithCancel(ctx)
+		pctx, pcancel := context.WithCancel(ctx)
+		cancel = pcancel
 		db := s.stmt.DBHandle()
-		go func() { <-ctx.Done(); db.Interrupt() }()
+		go func() {
+			running := pctx.Err() == nil
+			select {
+			case <-pctx.Done():
+				// OK, we fell off the end of the row loop
+			case <-ctx.Done():
+				// The input context ended; if we haven't already done a cleanup on
+				// this query, interrupt it.
+				if running {
+					db.Interrupt()
+				}
+			}
+		}()
 	}
 	return &rows{stmt: s, cancel: cancel}, nil
 }
