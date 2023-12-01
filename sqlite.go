@@ -496,16 +496,10 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 
 		db := s.stmt.DBHandle()
 		go func() {
-			running := pctx.Err() == nil
-			select {
-			case <-pctx.Done():
-				// OK, we fell off the end of the exec
-			case <-ctx.Done():
-				// The input context ended; if we haven't already done a cleanup on
-				// this query, interrupt it.
-				if running {
-					db.Interrupt()
-				}
+			started := pctx.Err() == nil
+			<-pctx.Done()
+			if ctx.Err() != nil && started {
+				db.Interrupt()
 			}
 		}()
 	}
@@ -565,16 +559,10 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		cancel = pcancel
 		db := s.stmt.DBHandle()
 		go func() {
-			running := pctx.Err() == nil
-			select {
-			case <-pctx.Done():
-				// OK, we fell off the end of the row loop
-			case <-ctx.Done():
-				// The input context ended; if we haven't already done a cleanup on
-				// this query, interrupt it.
-				if running {
-					db.Interrupt()
-				}
+			started := pctx.Err() == nil
+			<-pctx.Done()
+			if ctx.Err() != nil && started {
+				db.Interrupt()
 			}
 		}()
 	}
