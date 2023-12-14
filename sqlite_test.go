@@ -1240,3 +1240,18 @@ func TestPrepareReuse(t *testing.T) {
 		assertResult(rows2, i+1)
 	}
 }
+
+func TestRegression(t *testing.T) {
+	// A regression test for a query comprising only comments, which caused the
+	// driver to panic in statement cleanup.
+	t.Run("CommentOnlyQuery", func(t *testing.T) {
+		db := openTestDB(t)
+
+		rows, err := db.Query("-- comments only\n-- nothing else")
+		if err != nil {
+			t.Fatalf("Query failed: %v", err)
+		}
+		rows.Next()
+		t.Log("OK") // Reaching here at all means we didn't panic.
+	})
+}

@@ -244,7 +244,13 @@ func (stmt *Stmt) ResetAndClear() (time.Duration, error) {
 		err := errCode(C.reset_and_clear(stmt.stmt.int(), &stmt.start, &stmt.duration))
 		return time.Duration(stmt.duration), err
 	}
-	return 0, errCode(C.reset_and_clear(stmt.stmt.int(), nil, nil))
+	if sp := stmt.stmt.int(); sp != 0 {
+		return 0, errCode(C.reset_and_clear(stmt.stmt.int(), nil, nil))
+	}
+	// The statement was never initialized. This can happen if, for example, the
+	// parser found only comments (so the statement was not empty, but did not
+	// yield any instructions).
+	return 0, nil
 }
 
 func (stmt *Stmt) StartTimer() {
