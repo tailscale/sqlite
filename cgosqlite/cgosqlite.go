@@ -132,10 +132,6 @@ func (db *DB) Close() error {
 	return errCode(res)
 }
 
-func (db *DB) Interrupt() {
-	C.sqlite3_interrupt(db.db)
-}
-
 func (db *DB) ErrMsg() string {
 	return C.GoString(C.sqlite3_errmsg(db.db))
 }
