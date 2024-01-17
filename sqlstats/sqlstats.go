@@ -38,7 +38,21 @@ type Tracer struct {
 	// in the steady state, a sync.Map would be a faster object
 	// here.
 	mu      sync.RWMutex
-	queries map[string]*queryStats // normalized query -> stats
+	queries map[string]*QueryStats // normalized query -> stats
+}
+
+// Reset resets the state of t to its initial conditions.
+func (t *Tracer) Reset() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.TxCount = nil
+	t.TxCommit = nil
+	t.TxCommitError = nil
+	t.TxRollback = nil
+	t.TxTotalSeconds = nil
+	t.curTxs = sync.Map{}
+	t.queries = nil
 }
 
 type connStats struct {
@@ -70,14 +84,26 @@ func (t *Tracer) done(s *connStats) (why string, readOnly bool) {
 	return why, readOnly
 }
 
-type queryStats struct {
-	query string
+// QueryStats is a collection of stats for a given Query.
+type QueryStats struct {
+	Query string
 
 	// When inside the queries map all fields must be accessed as atomics.
-	count    int64
-	errors   int64
-	duration int64 // time.Duration
-	mean     int64
+
+	// Count represents the number of times this query has been
+	// executed.
+	Count int64
+
+	// Errors represents the number of errors encountered executing
+	// this query.
+	Errors int64
+
+	// TotalDuration represents the accumulated time spent executing the query.
+	TotalDuration time.Duration
+
+	// MeanDuration represents the average time spent executing the query.
+	MeanDuration time.Duration
+
 	// TODO lastErr atomic.Value
 }
 
@@ -90,7 +116,7 @@ func normalizeQuery(q string) string {
 	return q
 }
 
-func (t *Tracer) queryStats(query string) *queryStats {
+func (t *Tracer) queryStats(query string) *QueryStats {
 	query = normalizeQuery(query)
 
 	t.mu.RLock()
@@ -104,40 +130,51 @@ func (t *Tracer) queryStats(query string) *queryStats {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.queries == nil {
-		t.queries = make(map[string]*queryStats)
+		t.queries = make(map[string]*QueryStats)
 	}
 	stats = t.queries[query]
 	if stats == nil {
-		stats = &queryStats{query: query}
+		stats = &QueryStats{Query: query}
 		t.queries[query] = stats
 	}
 	return stats
 }
 
-func (t *Tracer) collect() (rows []queryStats) {
+// Collect returns the list of QueryStats pointers from the
+// Tracer.
+func (t *Tracer) Collect() (rows []*QueryStats) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
+	rows = make([]*QueryStats, 0, len(t.queries))
 	for query, s := range t.queries {
-		row := queryStats{
-			query:    query,
-			count:    atomic.LoadInt64(&s.count),
-			errors:   atomic.LoadInt64(&s.errors),
-			duration: atomic.LoadInt64(&s.duration),
+		row := QueryStats{
+			Query:         query,
+			Count:         atomic.LoadInt64(&s.Count),
+			Errors:        atomic.LoadInt64(&s.Errors),
+			TotalDuration: time.Duration(atomic.LoadInt64((*int64)(&s.TotalDuration))),
 		}
-		row.mean = row.duration / row.count
-		rows = append(rows, row)
+
+		row.MeanDuration = time.Duration(int64(row.TotalDuration) / row.Count)
+		rows = append(rows, &row)
 	}
 	return rows
 }
 
-func (t *Tracer) Query(prepCtx context.Context, id sqliteh.TraceConnID, query string, duration time.Duration, err error) {
+func (t *Tracer) Query(
+	prepCtx context.Context,
+	id sqliteh.TraceConnID,
+	query string,
+	duration time.Duration,
+	err error,
+) {
 	stats := t.queryStats(query)
 
-	atomic.AddInt64(&stats.count, 1)
-	atomic.AddInt64(&stats.duration, int64(duration))
+	atomic.AddInt64(&stats.Count, 1)
+	atomic.AddInt64((*int64)(&stats.TotalDuration), int64(duration))
+
 	if err != nil {
-		atomic.AddInt64(&stats.errors, 1)
+		atomic.AddInt64(&stats.Errors, 1)
 	}
 }
 
@@ -153,7 +190,13 @@ func (t *Tracer) connStats(id sqliteh.TraceConnID) *connStats {
 	return s
 }
 
-func (t *Tracer) BeginTx(beginCtx context.Context, id sqliteh.TraceConnID, why string, readOnly bool, err error) {
+func (t *Tracer) BeginTx(
+	beginCtx context.Context,
+	id sqliteh.TraceConnID,
+	why string,
+	readOnly bool,
+	err error,
+) {
 	s := t.connStats(id)
 
 	s.mu.Lock()
@@ -245,7 +288,13 @@ func (t *Tracer) HandleConns(w http.ResponseWriter, r *http.Request) {
 		if !s.readOnly {
 			rw = " read-write"
 		}
-		fmt.Fprintf(w, "\n\t%s (%v)%s", html.EscapeString(s.name), now.Sub(s.start).Round(time.Millisecond), rw)
+		fmt.Fprintf(
+			w,
+			"\n\t%s (%v)%s",
+			html.EscapeString(s.name),
+			now.Sub(s.start).Round(time.Millisecond),
+			rw,
+		)
 	}
 	fmt.Fprintf(w, "</pre></body></html>\n")
 }
@@ -253,19 +302,22 @@ func (t *Tracer) HandleConns(w http.ResponseWriter, r *http.Request) {
 func (t *Tracer) Handle(w http.ResponseWriter, r *http.Request) {
 	getArgs, _ := url.ParseQuery(r.URL.RawQuery)
 	sortParam := strings.TrimSpace(getArgs.Get("sort"))
-	rows := t.collect()
+	rows := t.Collect()
 
 	switch sortParam {
 	case "", "count":
-		sort.Slice(rows, func(i, j int) bool { return rows[i].count > rows[j].count })
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Count > rows[j].Count })
 	case "query":
-		sort.Slice(rows, func(i, j int) bool { return rows[i].query < rows[j].query })
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Query < rows[j].Query })
 	case "duration":
-		sort.Slice(rows, func(i, j int) bool { return rows[i].duration > rows[j].duration })
+		sort.Slice(
+			rows,
+			func(i, j int) bool { return rows[i].TotalDuration > rows[j].TotalDuration },
+		)
 	case "errors":
-		sort.Slice(rows, func(i, j int) bool { return rows[i].errors > rows[j].errors })
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Errors > rows[j].Errors })
 	case "mean":
-		sort.Slice(rows, func(i, j int) bool { return rows[i].mean > rows[j].mean })
+		sort.Slice(rows, func(i, j int) bool { return rows[i].MeanDuration > rows[j].MeanDuration })
 	default:
 		http.Error(w, fmt.Sprintf("unknown sort: %q", sortParam), 400)
 	}
@@ -285,11 +337,11 @@ func (t *Tracer) Handle(w http.ResponseWriter, r *http.Request) {
 	`)
 	for _, row := range rows {
 		fmt.Fprintf(w, "<tr><td>%s</td><td>%d</td><td>%s</td><td>%s</td><td>%d</td></tr>\n",
-			row.query,
-			row.count,
-			time.Duration(row.duration).Round(time.Second),
-			time.Duration(row.mean).Round(time.Millisecond),
-			row.errors,
+			row.Query,
+			row.Count,
+			row.TotalDuration.Round(time.Second),
+			row.MeanDuration.Round(time.Millisecond),
+			row.Errors,
 		)
 	}
 	fmt.Fprintf(w, "</table></body></html>")
