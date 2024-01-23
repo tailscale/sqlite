@@ -43,15 +43,28 @@ type Tracer struct {
 
 // Reset resets the state of t to its initial conditions.
 func (t *Tracer) Reset() {
+	if t.TxCount != nil {
+		t.TxCount.Init()
+	}
+	if t.TxCommit != nil {
+		t.TxCommit.Init()
+	}
+	if t.TxCommitError != nil {
+		t.TxCommitError.Init()
+	}
+	if t.TxRollback != nil {
+		t.TxRollback.Init()
+	}
+	if t.TxTotalSeconds != nil {
+		t.TxTotalSeconds.Init()
+	}
+	t.curTxs.Range(func(key, value any) bool {
+		t.curTxs.Delete(key)
+		return true
+	})
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
-
-	t.TxCount = nil
-	t.TxCommit = nil
-	t.TxCommitError = nil
-	t.TxRollback = nil
-	t.TxTotalSeconds = nil
-	t.curTxs = sync.Map{}
 	t.queries = nil
 }
 
