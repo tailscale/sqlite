@@ -3,12 +3,14 @@ package sqlstats
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tailscale/sqlite"
 )
@@ -117,5 +119,66 @@ func TestCollect(t *testing.T) {
 		if query.Count != int64(wantCount[idx]) {
 			t.Errorf("unexpected query count for %q, got: %d, expected: %d", query.Query, query.Count, wantCount[idx])
 		}
+	}
+}
+
+func TestTracerResetRace(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	tracer := &Tracer{}
+	db := sql.OpenDB(sqlite.Connector("file:"+t.TempDir()+"/test.db", nil, tracer))
+	defer db.Close()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "CREATE TABLE t (c);"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Continually reset the tracer.
+	go func() {
+		for ctx.Err() == nil {
+			tracer.Reset()
+		}
+	}()
+
+	// Continually grab transactions and insert into the database.
+	errc := make(chan error)
+	go func() {
+		defer close(errc)
+		var n int64
+		for ctx.Err() == nil {
+			n++
+			tx, err = db.BeginTx(ctx, nil)
+			if err != nil {
+				errc <- fmt.Errorf("starting tx: %w", err)
+				return
+			}
+			if _, err = tx.Exec("INSERT INTO t VALUES(?)", n); err != nil {
+				errc <- fmt.Errorf("insert: %w", err)
+				return
+			}
+			if n%2 == 0 {
+				if err := tx.Commit(); err != nil {
+					errc <- fmt.Errorf("commit: %w", err)
+					return
+				}
+			}
+			tx.Rollback()
+		}
+	}()
+
+	for err := range errc {
+		if ctx.Err() != nil {
+			return
+		}
+		t.Fatalf("unexpected error: %s", err)
 	}
 }
