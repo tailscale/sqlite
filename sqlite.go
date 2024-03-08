@@ -839,13 +839,13 @@ func (r *rows) Next(dest []driver.Value) error {
 			case sqliteh.SQLITE_TEXT:
 				v := r.stmt.stmt.ColumnText(i)
 				format := TimeFormat
-				if len(format) < len(v) {
+				if len(format) > len(v) {
 					format = strings.TrimSuffix(format, "-0700")
 				}
-				if len(format) < len(v) {
+				if len(format) > len(v) {
 					format = strings.TrimSuffix(format, ".000")
 				}
-				if len(format) < len(v) {
+				if len(format) > len(v) {
 					format = strings.TrimSuffix(format, ":05")
 				}
 				t, err := time.Parse(format, v)
