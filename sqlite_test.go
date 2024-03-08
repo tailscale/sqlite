@@ -296,25 +296,26 @@ func TestTime(t *testing.T) {
 }
 
 func TestShortTimes(t *testing.T) {
-	var tests = []time.Time{
-		time.Date(2021, 6, 8, 11, 36, 52, 128*1e6, time.UTC),
-		time.Date(2021, 6, 8, 11, 36, 52, 0, time.UTC),
-		time.Date(2021, 6, 8, 11, 36, 0, 0, time.UTC),
+	var tests = []struct {
+		in   string
+		want time.Time
+	}{
+		{in: "2021-06-08 11:36:52.128+0000", want: time.Date(2021, 6, 8, 11, 36, 52, 128*1e6, time.UTC)},
+		{in: "2021-06-08 11:36:52", want: time.Date(2021, 6, 8, 11, 36, 52, 0, time.UTC)},
+		{in: "2021-06-08 11:36", want: time.Date(2021, 6, 8, 11, 36, 0, 0, time.UTC)},
 	}
 
-	for _, t0 := range tests {
+	for _, tt := range tests {
 		db := openTestDB(t)
 		exec(t, db, "CREATE TABLE t (c DATETIME)")
-		exec(t, db, "INSERT INTO t VALUES (?)", t0)
-		var tOut time.Time
-		err := db.QueryRowContext(context.Background(), "SELECT c FROM t").Scan(&tOut)
-		if err != nil {
+		exec(t, db, "INSERT INTO t VALUES (?)", tt.in)
+		var got time.Time
+		if err := db.QueryRowContext(context.Background(), "SELECT c FROM t").Scan(&got); err != nil {
 			t.Fatal(err)
 		}
-		if !tOut.Equal(t0) {
-			t.Errorf("t0=%v, tOut=%v", t0, tOut)
+		if !got.Equal(tt.want) {
+			t.Errorf("in=%v, want=%v, got=%v", tt.in, tt.want, got)
 		}
-
 	}
 }
 
