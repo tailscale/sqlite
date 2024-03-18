@@ -25,9 +25,6 @@ type DB interface {
 	// Close is sqlite3_close.
 	// https://sqlite.org/c3ref/close.html
 	Close() error
-	// Interrupt is sqlite3_interrupt.
-	// https://www.sqlite.org/c3ref/interrupt.html
-	Interrupt()
 	// ErrMsg is sqlite3_errmsg.
 	// https://sqlite.org/c3ref/errcode.html
 	ErrMsg() string
