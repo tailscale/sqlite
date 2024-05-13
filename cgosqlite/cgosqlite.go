@@ -29,7 +29,9 @@ package cgosqlite
 // #cgo CFLAGS: -DSQLITE_ENABLE_STAT4
 // #cgo CFLAGS: -DSQLITE_ENABLE_DBSTAT_VTAB=1
 // #cgo CFLAGS: -DHAVE_USLEEP=1
-// #cgo linux,!android LDFLAGS: -ldl -lm -lrt
+//
+// // Select POSIX 2014 at least for clock_gettime.
+// #cgo CFLAGS: -D_XOPEN_SOURCE=600
 // #cgo linux CFLAGS: -std=c99
 //
 // // On Android, unlike Linux, there are no separate libpthread or librt
@@ -37,14 +39,7 @@ package cgosqlite
 // // need to be explicitly linked against. See
 // // https://developer.android.com/ndk/guides/stable_apis#c_library.
 // #cgo android LDFLAGS: -ldl -lm
-//
-// // TODO(crawshaw): for some reason, I cannot get CLOCK_MONOTONIC
-// // defined properly here by cgo. My C compiler seems otherwise
-// // fine, I can compile a small C program on linux referring to
-// // CLOCK_MONOTONIC.
-// //
-// // For now, use the value directly. It's a fixed value on linux.
-// #cgo linux CFLAGS: -DCLOCK_MONOTONIC=1
+// #cgo linux,!android LDFLAGS: -ldl -lm -lrt
 //
 // #include <stdint.h>
 // #include <stdlib.h>
