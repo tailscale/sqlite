@@ -32,6 +32,7 @@ package cgosqlite
 //
 // // Select POSIX 2014 at least for clock_gettime.
 // #cgo CFLAGS: -D_XOPEN_SOURCE=600
+// #cgo CFLAGS: -D_DARWIN_C_SOURCE=1
 // #cgo linux CFLAGS: -std=c99
 //
 // // On Android, unlike Linux, there are no separate libpthread or librt
