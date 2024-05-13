@@ -1,5 +1,5 @@
-#include "stdint.h"
-#include "time.h"
+#include <stdint.h>
+#include <time.h>
 
 // uintptr versions of sqlite3 pointer types, to avoid allocations
 // in cgo code. (go/corp/9919)
