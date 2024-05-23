@@ -38,7 +38,7 @@ type Tracer struct {
 	// in the steady state, a sync.Map would be a faster object
 	// here.
 	mu      sync.RWMutex
-	queries map[string]*QueryStats // normalized query -> stats
+	queries map[string]*queryStats // normalized query -> stats
 }
 
 // Reset resets the state of t to its initial conditions.
@@ -101,8 +101,6 @@ func (t *Tracer) done(s *connStats) (why string, readOnly bool) {
 type QueryStats struct {
 	Query string
 
-	// When inside the queries map all fields must be accessed as atomics.
-
 	// Count represents the number of times this query has been
 	// executed.
 	Count int64
@@ -116,8 +114,23 @@ type QueryStats struct {
 
 	// MeanDuration represents the average time spent executing the query.
 	MeanDuration time.Duration
+}
 
-	// TODO lastErr atomic.Value
+// queryStats is the internal stats for a given Query containing
+// atomics and updated at runtime.
+type queryStats struct {
+	Query string
+
+	// Count represents the number of times this query has been
+	// executed.
+	Count atomic.Int64
+
+	// Errors represents the number of errors encountered executing
+	// this query.
+	Errors atomic.Int64
+
+	// TotalDurationNanos represents the accumulated time spent executing the query.
+	TotalDurationNanos atomic.Int64 // a time.Duration in nanoseconds
 }
 
 var rxRemoveInClause = regexp.MustCompile(`(?i)\s+in\s*\((?:\s*\d+\s*(?:,\s*\d+\s*)*)\)`)
@@ -129,7 +142,7 @@ func normalizeQuery(q string) string {
 	return q
 }
 
-func (t *Tracer) queryStats(query string) *QueryStats {
+func (t *Tracer) queryStats(query string) *queryStats {
 	query = normalizeQuery(query)
 
 	t.mu.RLock()
@@ -143,11 +156,11 @@ func (t *Tracer) queryStats(query string) *QueryStats {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.queries == nil {
-		t.queries = make(map[string]*QueryStats)
+		t.queries = make(map[string]*queryStats)
 	}
 	stats = t.queries[query]
 	if stats == nil {
-		stats = &QueryStats{Query: query}
+		stats = &queryStats{Query: query}
 		t.queries[query] = stats
 	}
 	return stats
@@ -161,15 +174,15 @@ func (t *Tracer) Collect() (rows []*QueryStats) {
 
 	rows = make([]*QueryStats, 0, len(t.queries))
 	for query, s := range t.queries {
-		row := QueryStats{
+		row := &QueryStats{
 			Query:         query,
-			Count:         atomic.LoadInt64(&s.Count),
-			Errors:        atomic.LoadInt64(&s.Errors),
-			TotalDuration: time.Duration(atomic.LoadInt64((*int64)(&s.TotalDuration))),
+			Count:         s.Count.Load(),
+			Errors:        s.Errors.Load(),
+			TotalDuration: time.Duration(s.TotalDurationNanos.Load()),
 		}
 
 		row.MeanDuration = time.Duration(int64(row.TotalDuration) / row.Count)
-		rows = append(rows, &row)
+		rows = append(rows, row)
 	}
 	return rows
 }
@@ -183,11 +196,11 @@ func (t *Tracer) Query(
 ) {
 	stats := t.queryStats(query)
 
-	atomic.AddInt64(&stats.Count, 1)
-	atomic.AddInt64((*int64)(&stats.TotalDuration), int64(duration))
+	stats.Count.Add(1)
+	stats.TotalDurationNanos.Add(int64(duration))
 
 	if err != nil {
-		atomic.AddInt64(&stats.Errors, 1)
+		stats.Errors.Add(1)
 	}
 }
 
@@ -349,11 +362,15 @@ func (t *Tracer) Handle(w http.ResponseWriter, r *http.Request) {
 	</tr>
 	`)
 	for _, row := range rows {
+		d := row.MeanDuration.Round(time.Microsecond)
+		if d > 1*time.Millisecond {
+			d = d.Round(time.Millisecond)
+		}
 		fmt.Fprintf(w, "<tr><td>%s</td><td>%d</td><td>%s</td><td>%s</td><td>%d</td></tr>\n",
 			row.Query,
 			row.Count,
 			row.TotalDuration.Round(time.Second),
-			row.MeanDuration.Round(time.Millisecond),
+			d,
 			row.Errors,
 		)
 	}
