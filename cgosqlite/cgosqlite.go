@@ -34,21 +34,10 @@ package cgosqlite
 // // Select POSIX 2014 at least for clock_gettime.
 // #cgo CFLAGS: -D_XOPEN_SOURCE=600
 // #cgo CFLAGS: -D_DARWIN_C_SOURCE=1
-// #cgo linux CFLAGS: -std=c99
 //
-// // On Android, unlike Linux, there are no separate libpthread or librt
-// // libraries. That functionality is included directly in libc, which does not
-// // need to be explicitly linked against. See
-// // https://developer.android.com/ndk/guides/stable_apis#c_library.
-// #cgo android LDFLAGS: -ldl -lm
-// #cgo linux,!android LDFLAGS: -ldl -lm -lrt
+// // libm is required by the FTS5 extension, on Linux.
+// #cgo linux LDFLAGS: -lm
 //
-// #include <stdint.h>
-// #include <stdlib.h>
-// #include <string.h>
-// #include <pthread.h>
-// #include <sqlite3.h>
-// #include <time.h>
 // #include "cgosqlite.h"
 import "C"
 import (
