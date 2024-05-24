@@ -1,4 +1,8 @@
+#include <math.h> // math.h is required on linux for FTS5.
+#include "sqlite3.h"
+#include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <time.h>
 
 // uintptr versions of sqlite3 pointer types, to avoid allocations
