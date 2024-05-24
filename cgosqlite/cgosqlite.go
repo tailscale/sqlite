@@ -28,6 +28,7 @@ package cgosqlite
 // #cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA
 // #cgo CFLAGS: -DSQLITE_ENABLE_STAT4
 // #cgo CFLAGS: -DSQLITE_ENABLE_DBSTAT_VTAB=1
+// #cgo CFLAGS: -DSQLITE_TEMP_STORE=1
 // #cgo CFLAGS: -DHAVE_USLEEP=1
 //
 // // Select POSIX 2014 at least for clock_gettime.
