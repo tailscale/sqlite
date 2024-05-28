@@ -41,6 +41,7 @@ package cgosqlite
 // #include "cgosqlite.h"
 import "C"
 import (
+	"errors"
 	"sync"
 	"time"
 	"unsafe"
@@ -89,6 +90,7 @@ type Stmt struct {
 	// used as scratch space when calling into cgo
 	rowid, changes C.sqlite3_int64
 	duration       C.int64_t
+	encodedSize    C.int
 }
 
 // Open implements sqliteh.OpenFunc.
@@ -397,6 +399,23 @@ func (stmt *Stmt) ColumnDeclType(col int) string {
 	res := string(b)
 	stmt.db.declTypes[res] = res
 	return res
+}
+
+func (stmt *Stmt) StepAllBinary(dstBuf []byte) (n int, err error) {
+	if len(dstBuf) == 0 {
+		return 0, errors.New("zero-length buffer to StepAllBinary")
+	}
+	ret := C.ts_sqlite_step_all(stmt.stmt.int(), (*C.char)(unsafe.Pointer(&dstBuf[0])), C.int(len(dstBuf)), &stmt.encodedSize)
+
+	if int(stmt.encodedSize) > len(dstBuf) {
+		return 0, sqliteh.BufferSizeTooSmallError{
+			EncodedSize: int(stmt.encodedSize),
+		}
+	}
+	if err := errCode(ret); err != nil {
+		return 0, err
+	}
+	return int(stmt.encodedSize), nil
 }
 
 var emptyCStr = C.CString("")
