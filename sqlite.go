@@ -490,8 +490,9 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if err := s.bindAll(args); err != nil {
 		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
-	done := make(chan struct{})
+	var done chan struct{}
 	if ctx.Value(queryCancelKey{}) != nil {
+		done = make(chan struct{})
 		pctx, pcancel := context.WithCancel(ctx)
 		defer pcancel()
 
@@ -505,9 +506,8 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		// In the event we get an error from the initial step and exit early,
 		// dissociate the cancellation since we don't need it.
 		defer stop()
-	} else {
-		close(done)
 	}
+
 	row, lastInsertRowID, changes, duration, err := s.stmt.StepResult()
 	s.bound = false // StepResult resets the query
 	err = s.reserr("Stmt.Exec", err)
@@ -518,7 +518,9 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return nil, err
 	}
 	_ = row // TODO: return error if exec on query which returns rows?
-	<-done
+	if done != nil {
+		<-done
+	}
 	return getStmtResult(lastInsertRowID, changes), nil
 }
 
@@ -560,8 +562,9 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		return nil, err
 	}
 	cancel := func() {}
-	done := make(chan struct{})
+	var done chan struct{}
 	if ctx.Value(queryCancelKey{}) != nil {
+		done = make(chan struct{})
 		pctx, pcancel := context.WithCancel(ctx)
 		cancel = pcancel
 		db := s.stmt.DBHandle()
@@ -574,8 +577,6 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		// In this case we do not have an early exit, so we don't need to
 		// dissociate the cancellation handler: If the caller gets an error, it
 		// will explicitly trigger the cancellation and wait in (*rows).Close.
-	} else {
-		close(done)
 	}
 	return &rows{stmt: s, cancel: cancel, done: done}, nil
 }
@@ -804,7 +805,9 @@ func (r *rows) Close() error {
 	}
 	r.closed = true
 	r.cancel()
-	<-r.done
+	if r.done != nil {
+		<-r.done
+	}
 	if err := r.stmt.resetAndClear(); err != nil {
 		return r.stmt.reserr("Rows.Close(Reset)", err)
 	}
