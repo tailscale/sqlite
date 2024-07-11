@@ -756,7 +756,7 @@ type rows struct {
 	stmt   *stmt
 	closed bool
 	cancel context.CancelFunc // call when query ends
-	done   chan struct{}      // closed when cancellation is done
+	done   chan struct{}      // either nil, or closed when cancellation is done
 
 	// colType is the column types for Step to fill on each row. We only use 23
 	// as it packs well with the closed bool byte above (24 bytes total, same as
