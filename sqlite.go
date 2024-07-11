@@ -503,8 +503,9 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 				db.Interrupt()
 			}
 		})
-		// In the event we get an error from the initial step and exit early,
-		// dissociate the cancellation since we don't need it.
+		// In the event we get an error from the query's initial execution of
+		// sqlite3_step below and exit early, dissociate the cancellation since
+		// we don't want it to fire and potentially stop a later execution.
 		defer stop()
 	}
 
