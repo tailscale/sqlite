@@ -496,14 +496,15 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		defer pcancel()
 
 		db := s.stmt.DBHandle()
-		go func() {
+		stop := context.AfterFunc(pctx, func() {
 			defer close(done)
-			started := pctx.Err() == nil
-			<-pctx.Done()
-			if ctx.Err() != nil && started {
+			if ctx.Err() != nil {
 				db.Interrupt()
 			}
-		}()
+		})
+		// In the event we get an error from the initial step and exit early,
+		// dissociate the cancellation since we don't need it.
+		defer stop()
 	} else {
 		close(done)
 	}
@@ -564,14 +565,15 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		pctx, pcancel := context.WithCancel(ctx)
 		cancel = pcancel
 		db := s.stmt.DBHandle()
-		go func() {
+		context.AfterFunc(pctx, func() {
 			defer close(done)
-			started := pctx.Err() == nil
-			<-pctx.Done()
-			if ctx.Err() != nil && started {
+			if ctx.Err() != nil {
 				db.Interrupt()
 			}
-		}()
+		})
+		// In this case we do not have an early exit, so we don't need to
+		// dissociate the cancellation handler: If the caller gets an error, it
+		// will explicitly trigger the cancellation and wait in (*rows).Close.
 	} else {
 		close(done)
 	}
