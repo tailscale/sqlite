@@ -490,14 +490,25 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if err := s.bindAll(args); err != nil {
 		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
+	var done chan struct{}
 	if ctx.Value(queryCancelKey{}) != nil {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithCancel(ctx)
-		defer cancel()
+		done = make(chan struct{})
+		pctx, pcancel := context.WithCancel(ctx)
+		defer pcancel() // to make the AfterFunc fire and close(done)
 
 		db := s.stmt.DBHandle()
-		go func() { <-ctx.Done(); db.Interrupt() }()
+		stop := context.AfterFunc(pctx, func() {
+			defer close(done)
+			if ctx.Err() != nil {
+				db.Interrupt()
+			}
+		})
+		// In the event we get an error from the query's initial execution of
+		// sqlite3_step below and exit early, dissociate the cancellation since
+		// we don't want it to fire and potentially stop a later execution.
+		defer stop()
 	}
+
 	row, lastInsertRowID, changes, duration, err := s.stmt.StepResult()
 	s.bound = false // StepResult resets the query
 	err = s.reserr("Stmt.Exec", err)
@@ -508,6 +519,9 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return nil, err
 	}
 	_ = row // TODO: return error if exec on query which returns rows?
+	if done != nil {
+		<-done
+	}
 	return getStmtResult(lastInsertRowID, changes), nil
 }
 
@@ -549,12 +563,23 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		return nil, err
 	}
 	cancel := func() {}
+	var done chan struct{}
 	if ctx.Value(queryCancelKey{}) != nil {
-		ctx, cancel = context.WithCancel(ctx)
+		done = make(chan struct{})
+		pctx, pcancel := context.WithCancel(ctx)
+		cancel = pcancel
 		db := s.stmt.DBHandle()
-		go func() { <-ctx.Done(); db.Interrupt() }()
+		context.AfterFunc(pctx, func() {
+			defer close(done)
+			if ctx.Err() != nil {
+				db.Interrupt()
+			}
+		})
+		// In this case we do not have an early exit, so we don't need to
+		// dissociate the cancellation handler: If the caller gets an error, it
+		// will explicitly trigger the cancellation and wait in (*rows).Close.
 	}
-	return &rows{stmt: s, cancel: cancel}, nil
+	return &rows{stmt: s, cancel: cancel, done: done}, nil
 }
 
 func (s *stmt) resetAndClear() error {
@@ -732,6 +757,7 @@ type rows struct {
 	stmt   *stmt
 	closed bool
 	cancel context.CancelFunc // call when query ends
+	done   chan struct{}      // either nil, or closed when cancellation is done
 
 	// colType is the column types for Step to fill on each row. We only use 23
 	// as it packs well with the closed bool byte above (24 bytes total, same as
@@ -779,7 +805,10 @@ func (r *rows) Close() error {
 		return ErrClosed
 	}
 	r.closed = true
-	defer r.cancel()
+	r.cancel()
+	if r.done != nil {
+		<-r.done
+	}
 	if err := r.stmt.resetAndClear(); err != nil {
 		return r.stmt.reserr("Rows.Close(Reset)", err)
 	}
