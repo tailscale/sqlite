@@ -494,7 +494,7 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if ctx.Value(queryCancelKey{}) != nil {
 		done = make(chan struct{})
 		pctx, pcancel := context.WithCancel(ctx)
-		defer pcancel()
+		defer pcancel() // to make the AfterFunc fire and close(done)
 
 		db := s.stmt.DBHandle()
 		stop := context.AfterFunc(pctx, func() {
