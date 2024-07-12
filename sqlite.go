@@ -501,6 +501,9 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		db := s.stmt.DBHandle()
 		context.AfterFunc(pctx, func() {
 			defer close(done)
+
+			// Note: We respond to cancellation on the primary context (ctx) not
+			// the cleanup context (pctx).
 			if ctx.Err() != nil {
 				db.Interrupt()
 			}
@@ -570,6 +573,9 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 		db := s.stmt.DBHandle()
 		context.AfterFunc(pctx, func() {
 			defer close(done)
+
+			// Note: We respond to cancellation on the primary context (ctx) not
+			// the cleanup context (pctx).
 			if ctx.Err() != nil {
 				db.Interrupt()
 			}
