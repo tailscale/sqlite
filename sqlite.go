@@ -490,23 +490,22 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if err := s.bindAll(args); err != nil {
 		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
-	var done chan struct{}
-	if ctx.Value(queryCancelKey{}) != nil {
-		done = make(chan struct{})
-		pctx, pcancel := context.WithCancel(ctx)
-		defer pcancel() // to make the AfterFunc fire and close(done)
 
+	// If non-nil, wait must be called prior to returning to ensure a
+	// cancellation context (if present) has completed, so that a cancellation
+	// cannot outlast this request and fire during a later execution.
+	var wait func()
+	if ctx.Value(queryCancelKey{}) != nil {
+		done := make(chan struct{})
+		pctx, pcancel := context.WithCancel(ctx)
 		db := s.stmt.DBHandle()
-		stop := context.AfterFunc(pctx, func() {
+		context.AfterFunc(pctx, func() {
 			defer close(done)
 			if ctx.Err() != nil {
 				db.Interrupt()
 			}
 		})
-		// In the event we get an error from the query's initial execution of
-		// sqlite3_step below and exit early, dissociate the cancellation since
-		// we don't want it to fire and potentially stop a later execution.
-		defer stop()
+		wait = func() { pcancel(); <-done }
 	}
 
 	row, lastInsertRowID, changes, duration, err := s.stmt.StepResult()
@@ -515,13 +514,13 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	if s.conn.tracer != nil {
 		s.conn.tracer.Query(s.prepCtx, s.conn.id, s.query, duration, err)
 	}
+	if wait != nil {
+		wait()
+	}
 	if err != nil {
 		return nil, err
 	}
 	_ = row // TODO: return error if exec on query which returns rows?
-	if done != nil {
-		<-done
-	}
 	return getStmtResult(lastInsertRowID, changes), nil
 }
 
