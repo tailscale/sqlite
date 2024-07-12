@@ -491,10 +491,6 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
 
-	// If non-nil, wait must be called prior to returning to ensure a
-	// cancellation context (if present) has completed, so that a cancellation
-	// cannot outlast this request and fire during a later execution.
-	var wait func()
 	if ctx.Value(queryCancelKey{}) != nil {
 		done := make(chan struct{})
 		pctx, pcancel := context.WithCancel(ctx)
@@ -508,7 +504,11 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 				db.Interrupt()
 			}
 		})
-		wait = func() { pcancel(); <-done }
+
+		// We must wait prior to returning to ensure a cancellation context (if
+		// present) has completed, so that a cancellation cannot outlast this
+		// request and fire during a later execution.
+		defer func() { pcancel(); <-done }()
 	}
 
 	row, lastInsertRowID, changes, duration, err := s.stmt.StepResult()
@@ -516,9 +516,6 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 	err = s.reserr("Stmt.Exec", err)
 	if s.conn.tracer != nil {
 		s.conn.tracer.Query(s.prepCtx, s.conn.id, s.query, duration, err)
-	}
-	if wait != nil {
-		wait()
 	}
 	if err != nil {
 		return nil, err
