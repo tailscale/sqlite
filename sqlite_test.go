@@ -400,7 +400,7 @@ func TestWithPersist(t *testing.T) {
 	}
 }
 
-func TestWithQueryCancel(t *testing.T) {
+func TestWithQueryCancel_Timeout(t *testing.T) {
 	// This test query runs forever until interrupted.
 	const testQuery = `WITH RECURSIVE inf(n) AS (
     SELECT 1
@@ -410,65 +410,106 @@ func TestWithQueryCancel(t *testing.T) {
 
 	db := openTestDB(t)
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
+	t.Run("QueryContext", func(t *testing.T) {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-		defer cancel()
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			defer cancel()
 
-		rows, err := db.QueryContext(WithQueryCancel(ctx), testQuery)
-		if err != nil {
-			t.Errorf("QueryContext: unexpected error: %v", err)
-			return
-		}
-		for rows.Next() {
-			t.Error("Next result available before timeout")
-		}
-		if err := rows.Err(); err == nil {
-			t.Error("Rows did not report an error")
-		} else if !strings.Contains(err.Error(), "SQLITE_INTERRUPT") {
-			t.Errorf("Rows err=%v, want SQLITE_INTERRUPT", err)
-		}
-	}()
+			rows, err := db.QueryContext(WithQueryCancel(ctx), testQuery)
+			if err != nil {
+				t.Errorf("QueryContext: unexpected error: %v", err)
+				return
+			}
+			for rows.Next() {
+				t.Error("Next result available before timeout")
+			}
+			if err := rows.Err(); err == nil {
+				t.Error("Rows did not report an error")
+			} else if !strings.Contains(err.Error(), "SQLITE_INTERRUPT") {
+				t.Errorf("Rows err=%v, want SQLITE_INTERRUPT", err)
+			}
+		}()
 
-	select {
-	case <-done:
-		// OK
-	case <-time.After(30 * time.Second):
-		t.Fatal("Timeout waiting for query to end")
-	}
+		select {
+		case <-done:
+			// OK
+		case <-time.After(30 * time.Second):
+			t.Fatal("Timeout waiting for query to end")
+		}
+	})
+	t.Run("ExecContext", func(t *testing.T) {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			defer cancel()
+
+			res, err := db.ExecContext(WithQueryCancel(ctx), testQuery)
+			if err == nil {
+				t.Errorf("ExecContext: got %v, want error", res)
+			} else if !strings.Contains(err.Error(), "SQLITE_INTERRUPT") {
+				t.Errorf("ExecContext err=%v, want SQLITE_INTERRUPT", err)
+			}
+		}()
+
+		select {
+		case <-done:
+			// OK
+		case <-time.After(30 * time.Second):
+			t.Fatal("Timeout waiting for query to end")
+		}
+	})
 }
 
 func TestWithQueryCancel_OK(t *testing.T) {
 	db := openTestDB(t)
 
-	for i := 0; i < 100; i++ {
-		t.Run(strconv.Itoa(i+1), func(t *testing.T) {
-			// Set a timeout that is much longer than the expected runtime of the query.
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
+	t.Run("QueryContext", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			t.Run(strconv.Itoa(i+1), func(t *testing.T) {
+				// Set a timeout that is much longer than the expected runtime of the query.
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
 
-			rows, err := db.QueryContext(WithQueryCancel(ctx), `select 1`)
-			if err != nil {
-				t.Fatalf("QueryContext: unexpected error: %v", err)
-			}
-			for rows.Next() {
-				var z int
-				if err := rows.Scan(&z); err != nil {
-					t.Fatalf("Scan: %v", err)
-				} else if z != 1 {
-					t.Errorf("Scan: got %d, want 1", z)
+				rows, err := db.QueryContext(WithQueryCancel(ctx), `select 1`)
+				if err != nil {
+					t.Fatalf("QueryContext: unexpected error: %v", err)
 				}
-			}
-			if err := rows.Err(); err != nil {
-				t.Errorf("Err reported %v", err)
-			}
-			if err := rows.Close(); err != nil {
-				t.Errorf("Close reported %v", err)
-			}
-		})
-	}
+				for rows.Next() {
+					var z int
+					if err := rows.Scan(&z); err != nil {
+						t.Fatalf("Scan: %v", err)
+					} else if z != 1 {
+						t.Errorf("Scan: got %d, want 1", z)
+					}
+				}
+				if err := rows.Err(); err != nil {
+					t.Errorf("Err reported %v", err)
+				}
+				if err := rows.Close(); err != nil {
+					t.Errorf("Close reported %v", err)
+				}
+			})
+		}
+	})
+	t.Run("ExecContext", func(t *testing.T) {
+		for i := 0; i < 100; i++ {
+			t.Run(strconv.Itoa(i+1), func(t *testing.T) {
+				// Set a timeout that is much longer than the expected runtime of the query.
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+
+				_, err := db.ExecContext(WithQueryCancel(ctx), `select 1`)
+				if err != nil && !strings.Contains(err.Error(), "SQLITE_INTERRUPT") {
+					t.Errorf("ExecContext: unexpected error: %v", err)
+				}
+			})
+		}
+	})
 }
 
 func TestErrors(t *testing.T) {
