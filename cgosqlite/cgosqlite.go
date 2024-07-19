@@ -35,6 +35,9 @@ package cgosqlite
 // #cgo CFLAGS: -D_XOPEN_SOURCE=600
 // #cgo CFLAGS: -D_DARWIN_C_SOURCE=1
 //
+// // Quiet bogus warnings (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115274)
+// #cgo CFLAGS: -Wno-stringop-overread
+//
 // // libm is required by the FTS5 extension, on Linux.
 // #cgo linux LDFLAGS: -lm
 //
