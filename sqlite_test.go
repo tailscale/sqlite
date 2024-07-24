@@ -22,6 +22,13 @@ import (
 	"github.com/tailscale/sqlite/sqliteh"
 )
 
+// SessionResetter and Validator are required in order for conns to be returned
+// to database/sql connection pools.
+var (
+	_ driver.SessionResetter = (*conn)(nil)
+	_ driver.Validator       = (*conn)(nil)
+)
+
 func TestOpenDB(t *testing.T) {
 	db := openTestDB(t)
 	var journalMode string
