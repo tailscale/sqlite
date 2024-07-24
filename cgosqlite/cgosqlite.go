@@ -38,6 +38,10 @@ package cgosqlite
 // // Quiet bogus warnings (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115274)
 // #cgo CFLAGS: -Wno-stringop-overread
 //
+// // Ignore unknown warning options, to silence spurious complaints from
+// // Apple's build of Clang that does not know certain GCC warnings.
+// #cgo CFLAGS: -Wno-unknown-warning-option
+//
 // // libm is required by the FTS5 extension, on Linux.
 // #cgo linux LDFLAGS: -lm
 //
