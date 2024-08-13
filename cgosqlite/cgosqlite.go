@@ -35,9 +35,6 @@ package cgosqlite
 // #cgo CFLAGS: -D_XOPEN_SOURCE=600
 // #cgo CFLAGS: -D_DARWIN_C_SOURCE=1
 //
-// // Quiet bogus warnings (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115274)
-// #cgo CFLAGS: -Wno-stringop-overread
-//
 // // Ignore unknown warning options, to silence spurious complaints from
 // // Apple's build of Clang that does not know certain GCC warnings.
 // #cgo CFLAGS: -Wno-unknown-warning-option
