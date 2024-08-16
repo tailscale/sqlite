@@ -20,7 +20,7 @@ func walCallbackGo(db *C.sqlite3, dbNameC *C.char, dbNameLen C.int, pages C.int)
 	}
 
 	dbNameB := unsafe.Slice((*byte)(unsafe.Pointer(dbNameC)), dbNameLen)
-	dbName := stringFromBytes(dbNameB)
+	dbName := internStringFromBytes(dbNameB)
 	hook(dbName, int(pages))
 	return C.int(0) // result's kinda useless
 }
