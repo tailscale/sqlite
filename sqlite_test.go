@@ -1330,3 +1330,27 @@ func TestRegression(t *testing.T) {
 		t.Log("OK") // Reaching here at all means we didn't panic.
 	})
 }
+
+func TestDisableFunction(t *testing.T) {
+	db := openTestDB(t)
+
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	ctx := context.Background()
+
+	if _, err := conn.ExecContext(ctx, "SELECT LOWER('Hi')"); err != nil {
+		t.Fatal("Attempting to use the LOWER function before disabling should have been allowed")
+	}
+
+	if err := DisableFunction(conn, "lower", 1); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := conn.ExecContext(ctx, "SELECT LOWER('Hi')"); err == nil {
+		t.Fatal("Attempting to use the LOWER function after disabling should have failed")
+	}
+}

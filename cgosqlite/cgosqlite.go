@@ -203,6 +203,10 @@ func (db *DB) Prepare(query string, prepFlags sqliteh.PrepareFlags) (stmt sqlite
 	return &Stmt{db: db, stmt: cStmtFromPtr(cstmt)}, remainingQuery, nil
 }
 
+func (db *DB) DisableFunction(name string, numArgs int) error {
+	return errCode(C.ts_sqlite3_disable_function(db.db, C.CString(name), C.int(numArgs)))
+}
+
 func (stmt *Stmt) DBHandle() sqliteh.DB {
 	cdb := C.sqlite3_db_handle(stmt.stmt.ptr())
 	if cdb != nil {
