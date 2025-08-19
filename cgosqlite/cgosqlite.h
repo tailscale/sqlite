@@ -146,3 +146,7 @@ static double ts_sqlite3_column_double(handle_sqlite3_stmt stmt, int iCol) {
 static sqlite3_int64 ts_sqlite3_column_int64(handle_sqlite3_stmt stmt, int iCol) {
 	return sqlite3_column_int64((sqlite3_stmt*)(stmt), iCol);
 }
+
+static int ts_sqlite3_disable_function(sqlite3 *db, const char *zFunctionName, int nArg) {
+	return sqlite3_create_function(db, zFunctionName, nArg, SQLITE_ANY, NULL, NULL, NULL, NULL);
+}

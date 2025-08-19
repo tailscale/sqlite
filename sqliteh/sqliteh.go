@@ -60,6 +60,11 @@ type DB interface {
 	//
 	// If hook is nil, the hook is removed.
 	SetWALHook(hook func(dbName string, pages int))
+	// DisableFunction disables an existing function (including built-ins) using
+	// sqlite3_create_function. The name and numArgs must match the existing
+	// function's signature.
+	//
+	DisableFunction(name string, numArgs int) error
 }
 
 // Stmt is an sqlite3_stmt* database connection object.

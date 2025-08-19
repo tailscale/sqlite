@@ -1036,6 +1036,18 @@ func Checkpoint(sqlconn SQLConn, dbName string, mode sqliteh.Checkpoint) (numFra
 	return numFrames, numFramesCheckpointed, err
 }
 
+// DisableFunction disables the named function on the given connection.
+// numArgs must match the number of args of the function to be disabled.
+func DisableFunction(sqlconn SQLConn, name string, numArgs int) error {
+	return sqlconn.Raw(func(driverConn any) error {
+		c, ok := driverConn.(*conn)
+		if !ok {
+			return fmt.Errorf("sqlite.DisableFunction: sql.Conn is not the sqlite driver: %T", driverConn)
+		}
+		return c.db.DisableFunction(name, numArgs)
+	})
+}
+
 // WithPersist makes a ctx instruct the sqlite driver to persist a prepared query.
 //
 // This should be used with recurring queries to avoid constant parsing and
