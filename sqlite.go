@@ -119,6 +119,10 @@ func (drv) OpenConnector(name string) (driver.Connector, error) {
 	return &connector{name: name}, nil
 }
 
+// Connector returns a [driver.Connector] for the given connection
+// parameters.
+//
+// The tracer may be nil.
 func Connector(sqliteURI string, connInitFunc ConnInitFunc, tracer sqliteh.Tracer) driver.Connector {
 	return &connector{
 		name:         sqliteURI,
@@ -128,8 +132,10 @@ func Connector(sqliteURI string, connInitFunc ConnInitFunc, tracer sqliteh.Trace
 }
 
 // ConnectorWithLogger returns a [driver.Connector] for the given connection
-// parameters. makeLogger is used to create a [ConnLogger] when [Connect] is
+// parameters. makeLogger, if non-nil, is used to create a [ConnLogger] when [Connect] is
 // called.
+//
+// The tracer may also be nil.
 func ConnectorWithLogger(sqliteURI string, connInitFunc ConnInitFunc, tracer sqliteh.Tracer, makeLogger func() ConnLogger) driver.Connector {
 	return &connector{
 		name:         sqliteURI,
@@ -141,7 +147,7 @@ func ConnectorWithLogger(sqliteURI string, connInitFunc ConnInitFunc, tracer sql
 
 type connector struct {
 	name         string
-	tracer       sqliteh.Tracer
+	tracer       sqliteh.Tracer    // or nil
 	makeLogger   func() ConnLogger // or nil
 	connInitFunc ConnInitFunc
 }
@@ -193,7 +199,7 @@ const (
 type conn struct {
 	db       sqliteh.DB
 	id       sqliteh.TraceConnID
-	tracer   sqliteh.Tracer
+	tracer   sqliteh.Tracer // or nil if unused
 	logger   ConnLogger
 	stmts    map[string]*stmt // persisted statements
 	txState  txState
@@ -216,6 +222,9 @@ func (c *conn) Close() error {
 		delete(c.stmts, q)
 	}
 	err := reserr(c.db, "Conn.Close", "", c.db.Close())
+	if c.tracer != nil {
+		c.tracer.Close(c.id, err)
+	}
 	return err
 }
 

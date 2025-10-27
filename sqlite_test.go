@@ -634,6 +634,7 @@ func (t *queryTracer) Commit(_ sqliteh.TraceConnID, _ error) {
 }
 func (t *queryTracer) Rollback(_ sqliteh.TraceConnID, _ error) {
 }
+func (t *queryTracer) Close(_ sqliteh.TraceConnID, _ error) {}
 
 func TestTraceQuery(t *testing.T) {
 	tracer := &queryTracer{

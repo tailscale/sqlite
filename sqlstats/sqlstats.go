@@ -28,6 +28,7 @@ type Tracer struct {
 	TxCommitError  *expvar.Map
 	TxRollback     *expvar.Map
 	TxTotalSeconds *expvar.Map
+	ConnCloses     *expvar.Int
 
 	curTxs sync.Map // TraceConnID -> *connStats
 
@@ -57,6 +58,9 @@ func (t *Tracer) Reset() {
 	}
 	if t.TxTotalSeconds != nil {
 		t.TxTotalSeconds.Init()
+	}
+	if t.ConnCloses != nil {
+		t.ConnCloses.Set(0)
 	}
 	t.curTxs.Range(func(key, value any) bool {
 		t.curTxs.Delete(key)
@@ -375,4 +379,10 @@ func (t *Tracer) Handle(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 	fmt.Fprintf(w, "</table></body></html>")
+}
+
+func (t *Tracer) Close(id sqliteh.TraceConnID, err error) {
+	if t.ConnCloses != nil {
+		t.ConnCloses.Add(1)
+	}
 }

@@ -909,4 +909,7 @@ type Tracer interface {
 
 	// Rollback is called by the driver to report the end of a Tx.
 	Rollback(id TraceConnID, err error)
+
+	// Close is called when the SQLite connection is closed.
+	Close(id TraceConnID, err error)
 }
