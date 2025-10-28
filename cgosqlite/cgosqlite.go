@@ -1,5 +1,6 @@
 package cgosqlite
 
+/*
 // This list of compiler options is heavily influenced by:
 //
 // https://www.sqlite.org/compile.html#recommended_compile_time_options
@@ -7,45 +8,46 @@ package cgosqlite
 // One exception is we do not use SQLITE_OMIT_DECLTYPE, as the design
 // of the database/sql driver seems to require it.
 
-// #cgo CFLAGS: -DSQLITE_THREADSAFE=2
-// #cgo CFLAGS: -DSQLITE_DQS=0
-// #cgo CFLAGS: -DSQLITE_DEFAULT_MEMSTATUS=0
-// #cgo CFLAGS: -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1
-// #cgo CFLAGS: -DSQLITE_LIKE_DOESNT_MATCH_BLOBS
-// #cgo CFLAGS: -DSQLITE_MAX_EXPR_DEPTH=0
-// #cgo CFLAGS: -DSQLITE_OMIT_DEPRECATED
-// #cgo CFLAGS: -DSQLITE_OMIT_PROGRESS_CALLBACK
-// #cgo CFLAGS: -DSQLITE_OMIT_SHARED_CACHE
-// #cgo CFLAGS: -DSQLITE_USE_ALLOCA
-// #cgo CFLAGS: -DSQLITE_OMIT_AUTOINIT
-// #cgo CFLAGS: -DSQLITE_OMIT_LOAD_EXTENSION
-// #cgo CFLAGS: -DSQLITE_ENABLE_FTS5
-// #cgo CFLAGS: -DSQLITE_ENABLE_RTREE
-// #cgo CFLAGS: -DSQLITE_ENABLE_JSON1
-// #cgo CFLAGS: -DSQLITE_ENABLE_SESSION
-// #cgo CFLAGS: -DSQLITE_ENABLE_SNAPSHOT
-// #cgo CFLAGS: -DSQLITE_ENABLE_PREUPDATE_HOOK
-// #cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA
-// #cgo CFLAGS: -DSQLITE_ENABLE_STAT4
-// #cgo CFLAGS: -DSQLITE_ENABLE_DBSTAT_VTAB=1
-// #cgo CFLAGS: -DSQLITE_TEMP_STORE=1
-// #cgo CFLAGS: -DHAVE_USLEEP=1
-//
-// // Select POSIX 2014 at least for clock_gettime.
-// #cgo CFLAGS: -D_XOPEN_SOURCE=600
-// #cgo CFLAGS: -D_DARWIN_C_SOURCE=1
-//
-// // Ignore unknown warning options, to silence spurious complaints from
-// // Apple's build of Clang that does not know certain GCC warnings.
-// #cgo CFLAGS: -Wno-unknown-warning-option
-//
-// // Quiet bogus warnings (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115274)
-// #cgo CFLAGS: -Wno-stringop-overread
-//
-// // libm is required by the FTS5 extension, on Linux.
-// #cgo linux LDFLAGS: -lm
-//
-// #include "cgosqlite.h"
+#cgo CFLAGS: -DSQLITE_THREADSAFE=2
+#cgo CFLAGS: -DSQLITE_DQS=0
+#cgo CFLAGS: -DSQLITE_DEFAULT_MEMSTATUS=0
+#cgo CFLAGS: -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1
+#cgo CFLAGS: -DSQLITE_LIKE_DOESNT_MATCH_BLOBS
+#cgo CFLAGS: -DSQLITE_MAX_EXPR_DEPTH=0
+#cgo CFLAGS: -DSQLITE_OMIT_DEPRECATED
+#cgo CFLAGS: -DSQLITE_OMIT_PROGRESS_CALLBACK
+#cgo CFLAGS: -DSQLITE_OMIT_SHARED_CACHE
+#cgo CFLAGS: -DSQLITE_USE_ALLOCA
+#cgo CFLAGS: -DSQLITE_OMIT_AUTOINIT
+#cgo CFLAGS: -DSQLITE_OMIT_LOAD_EXTENSION
+#cgo CFLAGS: -DSQLITE_ENABLE_FTS5
+#cgo CFLAGS: -DSQLITE_ENABLE_RTREE
+#cgo CFLAGS: -DSQLITE_ENABLE_JSON1
+#cgo CFLAGS: -DSQLITE_ENABLE_SESSION
+#cgo CFLAGS: -DSQLITE_ENABLE_SNAPSHOT
+#cgo CFLAGS: -DSQLITE_ENABLE_PREUPDATE_HOOK
+#cgo CFLAGS: -DSQLITE_ENABLE_COLUMN_METADATA
+#cgo CFLAGS: -DSQLITE_ENABLE_STAT4
+#cgo CFLAGS: -DSQLITE_ENABLE_DBSTAT_VTAB=1
+#cgo CFLAGS: -DSQLITE_TEMP_STORE=1
+#cgo CFLAGS: -DHAVE_USLEEP=1
+
+// Select POSIX 2014 at least for clock_gettime.
+#cgo CFLAGS: -D_XOPEN_SOURCE=600
+#cgo CFLAGS: -D_DARWIN_C_SOURCE=1
+
+// Ignore unknown warning options, to silence spurious complaints from
+// Apple's build of Clang that does not know certain GCC warnings.
+#cgo CFLAGS: -Wno-unknown-warning-option
+
+// Quiet bogus warnings (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=115274)
+#cgo CFLAGS: -Wno-stringop-overread
+
+// libm is required by the FTS5 extension, on Linux.
+#cgo linux LDFLAGS: -lm
+
+#include "cgosqlite.h"
+*/
 import "C"
 import (
 	"sync"

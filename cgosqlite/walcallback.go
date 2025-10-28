@@ -1,6 +1,8 @@
 package cgosqlite
 
-// #include <sqlite3.h>
+/*
+#include <sqlite3.h>
+*/
 import "C"
 import (
 	"sync"

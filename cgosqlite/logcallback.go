@@ -1,18 +1,20 @@
 package cgosqlite
 
-// #include <sqlite3.h>
-//
-// void logCallbackGo(void* userData, int errCode, char* msgC);
-//
-// static void log_callback_into_go(void *userData, int errCode, const char *msg) {
-// 	logCallbackGo(userData, errCode, (char*)msg);
-// }
-//
-// static int ts_sqlite3_config_log(void) {
-// 	// TODO(raggi): if the library gains new uses of sqlite3_config they need to
-// 	// share a mutex.
-// 	return sqlite3_config(SQLITE_CONFIG_LOG, log_callback_into_go, NULL);
-// }
+/*
+#include <sqlite3.h>
+
+void logCallbackGo(void* userData, int errCode, char* msgC);
+
+static void log_callback_into_go(void *userData, int errCode, const char *msg) {
+	logCallbackGo(userData, errCode, (char*)msg);
+}
+
+static int ts_sqlite3_config_log(void) {
+	// TODO(raggi): if the library gains new uses of sqlite3_config they need to
+	// share a mutex.
+	return sqlite3_config(SQLITE_CONFIG_LOG, log_callback_into_go, NULL);
+}
+*/
 import "C"
 import (
 	"sync"
