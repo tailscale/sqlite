@@ -37,6 +37,9 @@ type DB interface {
 	// TotalChanges is sqlite3_total_changes.
 	// https://sqlite.org/c3ref/total_changes.html
 	TotalChanges() int
+	// MemoryUsed is sqlite3_memory_used.
+	// https://sqlite.org/c3ref/memory_highwater.html
+	MemoryUsed() int64
 	// ExtendedErrCode is sqlite3_extended_errcode.
 	// https://sqlite.org/c3ref/errcode.html
 	ExtendedErrCode() Code

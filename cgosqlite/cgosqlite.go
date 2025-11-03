@@ -10,7 +10,6 @@ package cgosqlite
 
 #cgo CFLAGS: -DSQLITE_THREADSAFE=2
 #cgo CFLAGS: -DSQLITE_DQS=0
-#cgo CFLAGS: -DSQLITE_DEFAULT_MEMSTATUS=0
 #cgo CFLAGS: -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1
 #cgo CFLAGS: -DSQLITE_LIKE_DOESNT_MATCH_BLOBS
 #cgo CFLAGS: -DSQLITE_MAX_EXPR_DEPTH=0
@@ -141,6 +140,10 @@ func (db *DB) Changes() int {
 
 func (db *DB) TotalChanges() int {
 	return int(C.sqlite3_total_changes(db.db))
+}
+
+func (db *DB) MemoryUsed() int64 {
+	return int64(C.sqlite3_memory_used())
 }
 
 func (db *DB) ExtendedErrCode() sqliteh.Code {

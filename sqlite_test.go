@@ -1540,15 +1540,31 @@ func TestConnLogger_read_tx(t *testing.T) {
 	}
 }
 
-func TestExpandedSQL(t *testing.T) {
+func getTestConn(t testing.TB) *conn {
 	ctx := context.Background()
 	connector := Connector("file:"+t.TempDir()+"/test.db", nil, nil)
 	sqlConn, err := connector.Connect(ctx)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	conn := sqlConn.(*conn)
+	t.Cleanup(func() { sqlConn.Close() })
+	return sqlConn.(*conn)
+}
 
+// Verify we didn't build with -DSQLITE_DEFAULT_MEMSTATUS=0.
+// We want memory stats.
+func TestDBMemoryUsed(t *testing.T) {
+	conn := getTestConn(t)
+	mem0 := conn.db.MemoryUsed()
+	if mem0 == 0 {
+		t.Error("MemoryUsed=0; want non-zero; did you build with -DSQLITE_DEFAULT_MEMSTATUS=0?")
+	}
+}
+
+func TestExpandedSQL(t *testing.T) {
+	conn := getTestConn(t)
+
+	ctx := t.Context()
 	sqlStmt, err := conn.PrepareContext(ctx, "SELECT ? + ?")
 	if err != nil {
 		t.Fatalf("PrepareContext: %v", err)
@@ -1566,5 +1582,15 @@ func TestExpandedSQL(t *testing.T) {
 
 	if got, want := stmt.stmt.ExpandedSQL(), "SELECT 6 + 7"; got != want {
 		t.Errorf("wrong sql: got %q, want %q", got, want)
+	}
+	mem0 := conn.db.MemoryUsed()
+	for range 100 {
+		if got, want := stmt.stmt.ExpandedSQL(), "SELECT 6 + 7"; got != want {
+			t.Errorf("wrong sql: got %q, want %q", got, want)
+		}
+	}
+	mem1 := conn.db.MemoryUsed()
+	if mem1 > mem0 {
+		t.Errorf("memory leak detected: before=%v after=%v", mem0, mem1)
 	}
 }
