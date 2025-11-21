@@ -1131,3 +1131,6 @@ type ConnLogger interface {
 	// Rollback is called after a rollback statement.
 	Rollback()
 }
+
+// LogCallback receives SQLite log messages.
+type LogCallback func(code sqliteh.Code, msg string)

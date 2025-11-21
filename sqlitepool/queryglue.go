@@ -1,3 +1,5 @@
+//go:build cgo
+
 package sqlitepool
 
 // This file contains bridging functions designed to let users of

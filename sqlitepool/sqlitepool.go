@@ -1,3 +1,5 @@
+//go:build cgo
+
 // Package sqlitepool implements a pool of SQLite database connections.
 package sqlitepool
 

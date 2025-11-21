@@ -28,3 +28,6 @@ jobs:
 
     - name: Race
       run: go test -v -race ./...
+
+    - name: No CGO build
+      run: CGO_ENABLED=0 go install ./...
