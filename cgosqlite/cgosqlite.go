@@ -206,7 +206,9 @@ func (db *DB) Prepare(query string, prepFlags sqliteh.PrepareFlags) (stmt sqlite
 }
 
 func (db *DB) DisableFunction(name string, numArgs int) error {
-	return errCode(C.ts_sqlite3_disable_function(db.db, C.CString(name), C.int(numArgs)))
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	return errCode(C.ts_sqlite3_disable_function(db.db, cName, C.int(numArgs)))
 }
 
 func (stmt *Stmt) DBHandle() sqliteh.DB {
