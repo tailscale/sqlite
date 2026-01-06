@@ -244,11 +244,11 @@ func (stmt *Stmt) StartTimer() {
 }
 
 func (stmt *Stmt) ColumnDatabaseName(col int) string {
-	return C.GoString((*C.char)(unsafe.Pointer(C.sqlite3_column_database_name(stmt.stmt, C.int(col)))))
+	return C.GoString(C.sqlite3_column_database_name(stmt.stmt, C.int(col)))
 }
 
 func (stmt *Stmt) ColumnTableName(col int) string {
-	return C.GoString((*C.char)(unsafe.Pointer(C.sqlite3_column_table_name(stmt.stmt, C.int(col)))))
+	return C.GoString(C.sqlite3_column_table_name(stmt.stmt, C.int(col)))
 }
 
 func (stmt *Stmt) Step(colType []sqliteh.ColumnType) (row bool, err error) {
