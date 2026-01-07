@@ -51,6 +51,7 @@ package cgosqlite
 import "C"
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -60,6 +61,20 @@ import (
 // emptyChar is the empty string constant used when binding empty strings to
 // avoid the need to allocate new storage in each invocation.
 var emptyChar [1]C.char
+
+var alwaysCopyBlob atomic.Bool
+
+// SetAlwaysCopyBlob sets whether [Stmt.ColumnBlob] should copy the blob data
+// instead of returning a slice that aliases SQLite's internal memory. This is
+// safe to call at runtime; the setting will apply to subsequent calls to
+// [Stmt.ColumnBlob].
+//
+// This was added to help detect misuse of [sql.RawBytes] where we might be
+// modifying data internal to SQLite, retaining it after it's no longer valid,
+// and so on.
+func SetAlwaysCopyBlob(copy bool) {
+	alwaysCopyBlob.Store(copy)
+}
 
 func init() {
 	C.sqlite3_initialize()
@@ -368,7 +383,11 @@ func (stmt *Stmt) ColumnBlob(col int) []byte {
 		return nil
 	}
 	n := int(C.sqlite3_column_bytes(stmt.stmt, C.int(col)))
-	return unsafe.Slice((*byte)(unsafe.Pointer(res)), n)
+	slice := unsafe.Slice((*byte)(unsafe.Pointer(res)), n)
+	if alwaysCopyBlob.Load() {
+		return append([]byte(nil), slice...)
+	}
+	return slice
 }
 
 func (stmt *Stmt) ColumnDouble(col int) float64 {
