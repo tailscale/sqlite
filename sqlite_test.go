@@ -335,6 +335,63 @@ func TestEmptyString(t *testing.T) {
 	}
 }
 
+// TestEmptyStringNotNull verifies that binding an empty string results in an
+// empty string value, not NULL. This is a regression test for a bug where
+// unsafe.StringData("") could return nil, causing sqlite3_bind_text64 to
+// receive a NULL pointer and treat the value as NULL instead of "".
+func TestEmptyStringNotNull(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	exec(t, db, "CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
+	exec(t, db, "INSERT INTO t (id, val) VALUES (?, ?)", 1, "")
+	exec(t, db, "INSERT INTO t (id, val) VALUES (?, ?)", 2, nil)
+	exec(t, db, "INSERT INTO t (id, val) VALUES (?, ?)", 3, "ok")
+
+	var val sql.NullString
+	if err := db.QueryRowContext(ctx, "SELECT val FROM t WHERE id = 1").Scan(&val); err != nil {
+		t.Fatal(err)
+	}
+	if !val.Valid {
+		t.Fatal("empty string was stored as NULL")
+	}
+	if val.String != "" {
+		t.Fatalf("val=%q, want empty string", val.String)
+	}
+
+	if err := db.QueryRowContext(ctx, "SELECT val FROM t WHERE id = 2").Scan(&val); err != nil {
+		t.Fatal(err)
+	}
+	if val.Valid {
+		t.Fatalf("NULL was stored as %q", val.String)
+	}
+
+	var countEmpty, countNull int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM t WHERE val = ''").Scan(&countEmpty); err != nil {
+		t.Fatal(err)
+	}
+	if countEmpty != 1 {
+		t.Fatalf("countEmpty=%d, want 1", countEmpty)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM t WHERE val IS NULL").Scan(&countNull); err != nil {
+		t.Fatal(err)
+	}
+	if countNull != 1 {
+		t.Fatalf("countNull=%d, want 1", countNull)
+	}
+
+	var length sql.NullInt64
+	if err := db.QueryRowContext(ctx, "SELECT length(val) FROM t WHERE id = 1").Scan(&length); err != nil {
+		t.Fatal(err)
+	}
+	if !length.Valid {
+		t.Fatal("length of empty string returned NULL")
+	}
+	if length.Int64 != 0 {
+		t.Fatalf("length=%d, want 0", length.Int64)
+	}
+}
+
 func TestExecScript(t *testing.T) {
 	db := openTestDB(t)
 	conn, err := db.Conn(context.Background())

@@ -57,7 +57,9 @@ import (
 	"github.com/tailscale/sqlite/sqliteh"
 )
 
-var emptyStrPtr = (*C.char)(unsafe.Pointer(unsafe.StringData("")))
+// emptyChar is the empty string constant used when binding empty strings to
+// avoid the need to allocate new storage in each invocation.
+var emptyChar [1]C.char
 
 func init() {
 	C.sqlite3_initialize()
@@ -298,7 +300,7 @@ func (stmt *Stmt) BindNull(col int) error {
 
 func (stmt *Stmt) BindText64(col int, val string) error {
 	if len(val) == 0 {
-		return errCode(C.sqlite3_bind_text64(stmt.stmt, C.int(col), emptyStrPtr, 0, C.SQLITE_STATIC, C.SQLITE_UTF8))
+		return errCode(C.sqlite3_bind_text64(stmt.stmt, C.int(col), &emptyChar[0], 0, C.SQLITE_STATIC, C.SQLITE_UTF8))
 	}
 	v := C.CString(val) // freed by sqlite
 	return errCode(C.sqlite3_bind_text64(stmt.stmt, C.int(col), v, C.sqlite3_uint64(len(val)), (*[0]byte)(C.free), C.SQLITE_UTF8))
