@@ -50,6 +50,8 @@ package cgosqlite
 */
 import "C"
 import (
+	"bytes"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -76,6 +78,27 @@ func SetAlwaysCopyBlob(copy bool) {
 	alwaysCopyBlob.Store(copy)
 }
 
+var columnBlobModifiedHook atomic.Pointer[func(query string)]
+
+// SetColumnBlobModifiedHook sets a function to be called (in a new goroutine)
+// whenever a []byte returned from [Stmt.ColumBlob] is detected as modified.
+// The hook receives the SQL query that created the statement.
+//
+// Setting a non-nil hook enables verification by attaching a cleanup function
+// to each returned slice that compares the final contents against the
+// original. Pass nil to disable.
+//
+// As a necessary side effect, this function causes [Stmt.ColumnBlob] to always
+// copy the blob data, to ensure that the comparison in the cleanup function is
+// valid, similar to SetAlwaysCopyBlob.
+func SetColumnBlobModifiedHook(hook func(query string)) {
+	if hook == nil {
+		columnBlobModifiedHook.Store(nil)
+	} else {
+		columnBlobModifiedHook.Store(&hook)
+	}
+}
+
 func init() {
 	C.sqlite3_initialize()
 }
@@ -92,6 +115,7 @@ type Stmt struct {
 	db    *DB
 	stmt  *C.sqlite3_stmt
 	start C.struct_timespec
+	query string // original query, stored for columnBlobModifiedHook
 
 	// used as scratch space when calling into cgo
 	rowid, changes C.sqlite3_int64
@@ -200,7 +224,7 @@ func (db *DB) Prepare(query string, prepFlags sqliteh.PrepareFlags) (stmt sqlite
 		return nil, "", err
 	}
 	remainingQuery = query[len(query)-int(C.strlen(csqlTail)):]
-	return &Stmt{db: db, stmt: cstmt}, remainingQuery, nil
+	return &Stmt{db: db, stmt: cstmt, query: query}, remainingQuery, nil
 }
 
 func (db *DB) DisableFunction(name string, numArgs int) error {
@@ -377,6 +401,23 @@ func (stmt *Stmt) ColumnText(col int) string {
 	return C.GoStringN(str, n)
 }
 
+// blobCheckArg is the argument passed to the cleanup function for verifying
+// that the slice returned from ColumnBlob was not modified.
+//
+// TODO: We use uintptr instead of []byte to avoid keeping the slice alive
+// (which would prevent the cleanup from running); is that right?
+type blobCheckArg struct {
+	original []byte             // copy of original data
+	ptr      uintptr            // pointer to first byte of slice
+	len      int                // length of slice
+	query    string             // SQL query that produced the blob
+	hook     func(query string) // hook to call if modified
+}
+
+// blobCheckHook, if non-nil, is called after each blob check Cleanup function
+// executes. This allows deterministic tests.
+var blobCheckHook func()
+
 func (stmt *Stmt) ColumnBlob(col int) []byte {
 	res := C.sqlite3_column_blob(stmt.stmt, C.int(col))
 	if res == nil {
@@ -384,9 +425,38 @@ func (stmt *Stmt) ColumnBlob(col int) []byte {
 	}
 	n := int(C.sqlite3_column_bytes(stmt.stmt, C.int(col)))
 	slice := unsafe.Slice((*byte)(unsafe.Pointer(res)), n)
-	if alwaysCopyBlob.Load() {
-		return append([]byte(nil), slice...)
+
+	// In addition to copying if the alwaysCopyBlob flag is set, also copy
+	// if there is a columnBlobModifiedHook set. This is because a
+	// runtime.AddCleanup callback executes at some indeterminate time in
+	// the future, after the point which SQLite might have reused the
+	// underlying memory. Copying now ensures that the comparison in the
+	// cleanup function is valid.
+	hookPtr := columnBlobModifiedHook.Load()
+	if alwaysCopyBlob.Load() || hookPtr != nil {
+		slice = append([]byte(nil), slice...)
 	}
+
+	if hookPtr != nil && n > 0 {
+		arg := blobCheckArg{
+			original: bytes.Clone(slice),
+			ptr:      uintptr(unsafe.Pointer(&slice[0])),
+			len:      n,
+			query:    stmt.query,
+			hook:     *hookPtr,
+		}
+		runtime.AddCleanup(&slice[0], func(a blobCheckArg) {
+			current := unsafe.Slice((*byte)(unsafe.Pointer(a.ptr)), a.len)
+			if !bytes.Equal(current, a.original) {
+				go a.hook(a.query)
+			}
+
+			if blobCheckHook != nil {
+				blobCheckHook()
+			}
+		}, arg)
+	}
+
 	return slice
 }
 
