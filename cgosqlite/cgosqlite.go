@@ -357,6 +357,9 @@ func (stmt *Stmt) BindParameterIndexSearch(name string) int {
 	if i := stmt.BindParameterIndex("@" + name); i > 0 {
 		return i
 	}
+	if i := stmt.BindParameterIndex("$" + name); i > 0 {
+		return i
+	}
 	return stmt.BindParameterIndex("?" + name)
 }
 

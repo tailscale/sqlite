@@ -8,6 +8,45 @@ import (
 	"github.com/tailscale/sqlite/sqliteh"
 )
 
+func TestBindParameterIndexSearch(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"), sqliteh.OpenFlagsDefault, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	tests := []struct {
+		name   string
+		query  string
+		param  string
+		wantOK bool
+	}{
+		{"colon", "SELECT :foo", "foo", true},
+		{"at_sybol", "SELECT @foo", "foo", true},
+		{"dollar", "SELECT $foo", "foo", true},
+		{"question", "SELECT ?123", "123", true},
+		{"not_found", "SELECT :bar", "foo", false},
+		{"dollar_multiple_params", "SELECT $a, $b, $c", "b", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stmt, _, err := db.Prepare(tt.query, 0)
+			if err != nil {
+				t.Fatalf("Prepare %q: %v", tt.query, err)
+			}
+			defer stmt.Finalize()
+
+			idx := stmt.BindParameterIndexSearch(tt.param)
+			gotOK := idx > 0
+			if gotOK != tt.wantOK {
+				t.Errorf("BindParameterIndexSearch(%q) = %d, wantOK=%v gotOK=%v",
+					tt.param, idx, tt.wantOK, gotOK)
+			}
+		})
+	}
+}
+
 func TestColumnBlob(t *testing.T) {
 	// Run the test with and without the SetAlwaysCopyBlob flag enabled.
 	cases := []struct {
