@@ -8,6 +8,8 @@ import (
 
 func init() {
 	Open = cgosqlite.Open
+
+	cgosqlite.UsesAfterClose = &UsesAfterClose
 }
 
 // SetLogCallback sets the global SQLite log callback.
