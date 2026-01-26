@@ -32,6 +32,10 @@ package cgosqlite
 #cgo CFLAGS: -DSQLITE_TEMP_STORE=1
 #cgo CFLAGS: -DHAVE_USLEEP=1
 
+// The timestamp VFS shim.
+#cgo CFLAGS: -DSQLITE_EXTRA_INIT=sqlite3_register_tmstmpvfs
+#cgo CFLAGS: -DSQLITE_TMSTMPVFS_STATIC=1
+
 // Select POSIX 2014 at least for clock_gettime.
 #cgo CFLAGS: -D_XOPEN_SOURCE=600
 #cgo CFLAGS: -D_DARWIN_C_SOURCE=1
