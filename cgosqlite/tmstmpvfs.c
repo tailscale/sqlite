@@ -86,7 +86,7 @@
 **
 ** USING
 **
-** Open database connections using the sqlite3_open() or 
+** Open database connections using the sqlite3_open() or
 ** sqlite3_open_v2() interfaces, as normal.  Ordinary database files
 ** (without a timestamp) will operate normally.
 **
@@ -108,7 +108,7 @@
 **
 ** It never hurts to run the VACUUM, even if you don't need it.
 **
-** From the CLI, use the ".filectrl reserve_bytes 16" command, 
+** From the CLI, use the ".filectrl reserve_bytes 16" command,
 ** followed by "VACUUM;".
 **
 ** SQLite allows the number of reserve-bytes to be increased, but
@@ -409,7 +409,7 @@ static sqlite3_vfs tmstmp_vfs = {
   1024,                         /* mxPathname */
   0,                            /* pNext */
   "tmstmpvfs",                  /* zName */
-  0,                            /* pAppData (set when registered) */ 
+  0,                            /* pAppData (set when registered) */
   tmstmpOpen,                   /* xOpen */
   tmstmpDelete,                 /* xDelete */
   tmstmpAccess,                 /* xAccess */
@@ -502,6 +502,7 @@ static int tmstmpLogFlush(TmstmpFile *p){
     }
   }
   (void)fwrite(pLog->a, pLog->n, 1, pLog->log);
+  fflush(pLog->log);
   pLog->n = 0;
   return 0;
 }
@@ -567,9 +568,9 @@ static int tmstmpClose(sqlite3_file *pFile){
 ** Read bytes from a file
 */
 static int tmstmpRead(
-  sqlite3_file *pFile, 
-  void *zBuf, 
-  int iAmt, 
+  sqlite3_file *pFile,
+  void *zBuf,
+  int iAmt,
   sqlite_int64 iOfst
 ){
   int rc;
@@ -619,7 +620,7 @@ static int tmstmpWrite(
       u32 x = 0;
       p->iFrame = (iOfst - 32)/(p->pgsz+24)+1;
       p->pgno = tmstmpGetU32((const u8*)zBuf);
-      p->salt1 = tmstmpGetU32(((const u8*)zBuf)+16);
+      p->salt1 = tmstmpGetU32(((const u8*)zBuf)+8);
       memcpy(&x, ((const u8*)zBuf)+4, 4);
       p->isCommit = (x!=0);
       p->iOfst = iOfst;
@@ -822,7 +823,7 @@ static int tmstmpOpen(
   sqlite3_file *pSubFile;
   sqlite3_vfs *pSubVfs;
   int rc;
-  
+
   pSubVfs = ORIGVFS(pVfs);
   if( (flags & (SQLITE_OPEN_MAIN_DB|SQLITE_OPEN_WAL))==0 ){
     /* If the file is not a persistent database or a WAL file, then
@@ -874,7 +875,7 @@ static int tmstmpOpen(
     unsigned int yoe;          /* year of 400-year era */
     unsigned int doy;          /* day of year */
     unsigned int mp;           /* month with March==0 */
-  
+
     p->isDb = 1;
     r1 = 0;
     pLog = sqlite3_malloc64( sizeof(TmstmpLog) );
@@ -888,7 +889,7 @@ static int tmstmpOpen(
     days = r1/86400000;
     sod = (r1%86400000)/1000;
     f = (int)(r1%1000);
-  
+
     h = sod/3600;
     m = (sod%3600)/60;
     s = sod%60;
@@ -1018,13 +1019,13 @@ int sqlite3_unregister_tmstmpvfs(void){
 #ifdef _WIN32
 __declspec(dllexport)
 #endif
-/* 
+/*
 ** This routine is called by sqlite3_load_extension() when the
 ** extension is first loaded.
 ***/
 int sqlite3_tmstmpvfs_init(
-  sqlite3 *db, 
-  char **pzErrMsg, 
+  sqlite3 *db,
+  char **pzErrMsg,
   const sqlite3_api_routines *pApi
 ){
   int rc;
