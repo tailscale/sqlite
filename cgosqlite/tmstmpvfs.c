@@ -502,6 +502,7 @@ static int tmstmpLogFlush(TmstmpFile *p){
     }
   }
   (void)fwrite(pLog->a, pLog->n, 1, pLog->log);
+  fflush(pLog->log);
   pLog->n = 0;
   return 0;
 }
@@ -619,7 +620,7 @@ static int tmstmpWrite(
       u32 x = 0;
       p->iFrame = (iOfst - 32)/(p->pgsz+24)+1;
       p->pgno = tmstmpGetU32((const u8*)zBuf);
-      p->salt1 = tmstmpGetU32(((const u8*)zBuf)+16);
+      p->salt1 = tmstmpGetU32(((const u8*)zBuf)+8);
       memcpy(&x, ((const u8*)zBuf)+4, 4);
       p->isCommit = (x!=0);
       p->iOfst = iOfst;
