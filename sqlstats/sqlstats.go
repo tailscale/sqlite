@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tailscale/sqlite/sqliteh"
+	"github.com/tailscale/sqlite-exp/sqliteh"
 )
 
 // Tracer implements sqlite.Tracer and collects query stats.
@@ -355,7 +355,7 @@ func (t *Tracer) Handle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(200)
 	fmt.Fprintf(w, `<!DOCTYPE html><html><body>
-	<p>Trace of SQLite queries run via the github.com/tailscale/sqlite driver.</p>
+	<p>Trace of SQLite queries run via the github.com/tailscale/sqlite-exp driver.</p>
 	<table border="1">
 	<tr>
 	<th><a href="?sort=query">Query</a></th>

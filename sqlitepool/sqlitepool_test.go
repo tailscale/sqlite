@@ -7,8 +7,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/tailscale/sqlite/sqliteh"
-	"github.com/tailscale/sqlite/sqlstats"
+	"github.com/tailscale/sqlite-exp/sqliteh"
+	"github.com/tailscale/sqlite-exp/sqlstats"
 )
 
 func TestPool(t *testing.T) {

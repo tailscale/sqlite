@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tailscale/sqlite"
+	"github.com/tailscale/sqlite-exp"
 )
 
 func TestActiveTxs(t *testing.T) {

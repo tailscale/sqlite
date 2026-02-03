@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/tailscale/sqlite/sqliteh"
+	"github.com/tailscale/sqlite-exp/sqliteh"
 )
 
 func TestBindParameterIndexSearch(t *testing.T) {

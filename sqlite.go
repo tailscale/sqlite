@@ -80,7 +80,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tailscale/sqlite/sqliteh"
+	"github.com/tailscale/sqlite-exp/sqliteh"
 )
 
 var Open sqliteh.OpenFunc = func(string, sqliteh.OpenFlags, string) (sqliteh.DB, error) {
@@ -326,7 +326,7 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 	const LevelSerializable = 6 // matches the sql package constant
 	if opts.Isolation != 0 && opts.Isolation != LevelSerializable {
-		return nil, errors.New("github.com/tailscale/sqlite driver only supports serializable isolation level")
+		return nil, errors.New("github.com/tailscale/sqlite-exp driver only supports serializable isolation level")
 	}
 	c.readOnly = opts.ReadOnly
 	c.txState = txStateInit

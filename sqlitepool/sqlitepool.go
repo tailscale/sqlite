@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tailscale/sqlite/cgosqlite"
-	"github.com/tailscale/sqlite/sqliteh"
+	"github.com/tailscale/sqlite-exp/cgosqlite"
+	"github.com/tailscale/sqlite-exp/sqliteh"
 )
 
 // A Pool is a fixed-size pool of SQLite database connections.

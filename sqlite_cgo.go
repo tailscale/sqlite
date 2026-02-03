@@ -3,7 +3,7 @@
 package sqlite
 
 import (
-	"github.com/tailscale/sqlite/cgosqlite"
+	"github.com/tailscale/sqlite-exp/cgosqlite"
 )
 
 func init() {

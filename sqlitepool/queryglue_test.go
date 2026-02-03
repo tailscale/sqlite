@@ -7,8 +7,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/tailscale/sqlite/sqliteh"
-	"github.com/tailscale/sqlite/sqlstats"
+	"github.com/tailscale/sqlite-exp/sqliteh"
+	"github.com/tailscale/sqlite-exp/sqlstats"
 )
 
 func TestQueryGlue(t *testing.T) {
