@@ -579,7 +579,11 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 			// Note: We respond to cancellation on the primary context (ctx) not
 			// the cleanup context (pctx).
 			if ctx.Err() != nil {
-				db.Interrupt()
+				if s.closed.Load() {
+					UsesAfterClose.Add("stmt.ExecContext.Interrupt", 1)
+				} else {
+					db.Interrupt()
+				}
 			}
 		})
 
@@ -652,7 +656,11 @@ func (s *stmt) QueryContext(ctx context.Context, args []driver.NamedValue) (driv
 			// Note: We respond to cancellation on the primary context (ctx) not
 			// the cleanup context (pctx).
 			if ctx.Err() != nil {
-				db.Interrupt()
+				if s.closed.Load() {
+					UsesAfterClose.Add("stmt.QueryContext.Interrupt", 1)
+				} else {
+					db.Interrupt()
+				}
 			}
 		})
 		// In this case we do not have an early exit, so we don't need to
