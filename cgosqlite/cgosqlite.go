@@ -46,6 +46,15 @@ package cgosqlite
 // libm is required by the FTS5 extension, on Linux.
 #cgo linux LDFLAGS: -lm
 
+// Enable API armor.
+#cgo sqlite_enable_api_armor CFLAGS: -DSQLITE_ENABLE_API_ARMOR
+
+#ifdef SQLITE_ENABLE_API_ARMOR
+int api_armor_enabled=1;
+#else
+int api_armor_enabled=0;
+#endif
+
 #include "cgosqlite.h"
 */
 import "C"
@@ -501,4 +510,9 @@ func stringFromBytes(b []byte) string {
 	s := string(b)
 	internCache.Store(s, s)
 	return s
+}
+
+// APIArmorEnabled reports whether or not sqlite was compiled with SQLITE_ENABLE_API_ARMOR.
+func APIArmorEnabled() bool {
+	return C.api_armor_enabled == 1
 }
