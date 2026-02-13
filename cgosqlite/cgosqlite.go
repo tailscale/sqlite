@@ -32,10 +32,6 @@ package cgosqlite
 #cgo CFLAGS: -DSQLITE_TEMP_STORE=1
 #cgo CFLAGS: -DHAVE_USLEEP=1
 
-// The timestamp VFS shim.
-#cgo CFLAGS: -DSQLITE_EXTRA_INIT=sqlite3_register_tmstmpvfs
-#cgo CFLAGS: -DSQLITE_TMSTMPVFS_STATIC=1
-
 // Select POSIX 2014 at least for clock_gettime.
 #cgo CFLAGS: -D_XOPEN_SOURCE=600
 #cgo CFLAGS: -D_DARWIN_C_SOURCE=1
@@ -52,11 +48,19 @@ package cgosqlite
 
 // Enable API armor.
 #cgo sqlite_enable_api_armor CFLAGS: -DSQLITE_ENABLE_API_ARMOR
-
 #ifdef SQLITE_ENABLE_API_ARMOR
 int api_armor_enabled=1;
 #else
 int api_armor_enabled=0;
+#endif
+
+// Enable the timestamp VFS shim.
+#cgo sqlite_enable_tmstmpvfs CFLAGS: -DSQLITE_EXTRA_INIT=sqlite3_register_tmstmpvfs
+#cgo sqlite_enable_tmstmpvfs CFLAGS: -DSQLITE_TMSTMPVFS_STATIC=1
+#ifdef SQLITE_TMSTMPVFS_STATIC
+int tmstmpvfs_enabled=1;
+#else
+int tmstmpvfs_enabled=0;
 #endif
 
 #include "cgosqlite.h"
@@ -519,4 +523,9 @@ func stringFromBytes(b []byte) string {
 // APIArmorEnabled reports whether or not sqlite was compiled with SQLITE_ENABLE_API_ARMOR.
 func APIArmorEnabled() bool {
 	return C.api_armor_enabled == 1
+}
+
+// TimestampVFSEnabled reports whether or not sqlite was compiled with support for the tmstmpvfs shim.
+func TimestampVFSEnabled() bool {
+	return C.tmstmpvfs_enabled == 1
 }

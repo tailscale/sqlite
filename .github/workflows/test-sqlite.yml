@@ -26,11 +26,14 @@ jobs:
     - name: Test
       run: go test -v ./...
 
+    - name: With sqlite_enable_tmstmpvfs
+      run: go test -v -tags sqlite_enable_tmstmpvfs
+      
     - name: Race
       run: go test -v -race ./...
 
-    - name: Race with sqlite_enable_api_armor
-      run: go test -v -race -tags sqlite_enable_api_armor
-      
+    - name: Race with sqlite_enable_api_armor and sqlite_enable_tmstmpvfs
+      run: go test -v -race -tags sqlite_enable_api_armor,sqlite_enable_tmstmpvfs
+
     - name: No CGO build
       run: CGO_ENABLED=0 go install ./...
