@@ -484,6 +484,7 @@ static void tmstmpPutU32(u32 v, unsigned char *a){
 /* Free a TmstmpLog object */
 static void tmstmpLogFree(TmstmpLog *pLog){
   if( pLog==0 ) return;
+  if( pLog->log ) fclose(pLog->log);
   sqlite3_free(pLog->zLogname);
   sqlite3_free(pLog);
 }
@@ -638,7 +639,10 @@ static int tmstmpWrite(
     memset(s, 0, TMSTMP_RESERVE);
     tmstmpPutTS(p, s+2);
     tmstmpPutU32(p->iFrame, s+8);
-    tmstmpPutU32(p->pPartner->salt1, s+12);
+    s[12] = 0;
+    s[13] = (p->pPartner->salt1 >> 16) & 0xff;
+    s[14] = (p->pPartner->salt1 >> 8) & 0xff;
+    s[15] = p->pPartner->salt1 & 0xff;
     assert( p->pgsz>0 );
     tmstmpEvent(p, ELOG_CKPT_PAGE, 0, (iOfst/p->pgsz)+1, p->iFrame, 0);
   }else if( p->pPartner==0 ){
@@ -648,7 +652,7 @@ static int tmstmpWrite(
     tmstmpPutTS(p, s+2);
     s[12] = 2;
     assert( p->pgsz>0 );
-    tmstmpEvent(p, ELOG_DB_PAGE, 0, (u32)(iOfst/p->pgsz), 0, s+2);
+    tmstmpEvent(p, ELOG_DB_PAGE, 0, (u32)(iOfst/p->pgsz)+1, 0, s+2);
   }
   return pSub->pMethods->xWrite(pSub,zBuf,iAmt,iOfst);
 }
@@ -880,7 +884,9 @@ static int tmstmpOpen(
     r1 = 0;
     pLog = sqlite3_malloc64( sizeof(TmstmpLog) );
     if( pLog==0 ){
-      return SQLITE_NOMEM;
+      pSubFile->pMethods->xClose(pSubFile);
+      rc = SQLITE_NOMEM;
+      goto tmstmp_open_done;
     }
     memset(pLog, 0, sizeof(pLog[0]));
     p->pLog = pLog;
@@ -894,7 +900,7 @@ static int tmstmpOpen(
     m = (sod%3600)/60;
     s = sod%60;
     z = days + 719468;
-    era = z/147097;
+    era = z/146097;
     doe = (unsigned)(z - era*146097);
     yoe = (doe - doe/1460 + doe/36524 - doe/146096)/365;
     y = (int)yoe + era*400;
