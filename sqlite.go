@@ -554,7 +554,7 @@ func (s *stmt) Close() error {
 func (s *stmt) Exec(args []driver.Value) (driver.Result, error) { panic("deprecated, unused") }
 func (s *stmt) Query(args []driver.Value) (driver.Rows, error)  { panic("deprecated, unused") }
 
-func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (res driver.Result, errRet error) {
 	if s.closed.Load() {
 		UsesAfterClose.Add("stmt.ExecContext", 1)
 		return nil, ErrClosed
@@ -566,7 +566,10 @@ func (s *stmt) ExecContext(ctx context.Context, args []driver.NamedValue) (drive
 		return nil, s.reserr("Stmt.Exec(Bind)", err)
 	}
 	if s.conn.logger != nil && !s.conn.readOnly {
-		s.conn.logger.Statement(s.stmt.ExpandedSQL())
+		esql := s.stmt.ExpandedSQL()
+		defer func() {
+			s.conn.logger.Statement(esql, errRet)
+		}()
 	}
 
 	if ctx.Value(queryCancelKey{}) != nil {
@@ -1196,7 +1199,8 @@ type ConnLogger interface {
 	Begin()
 
 	// Statement is called with evaluated SQL when a statement is executed.
-	Statement(sql string)
+	// err is the error (if any) resulting from executing the statement.
+	Statement(sql string, err error)
 
 	// Commit is called after a commit statement, with the error resulting
 	// from the attempted commit.
