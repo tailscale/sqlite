@@ -28,7 +28,9 @@ jobs:
 
     - name: With sqlite_enable_tmstmpvfs
       run: go test -v -tags sqlite_enable_tmstmpvfs
-      
+
+    - name: With sqlite_enable_multithreaded_checks
+      run: go test -v -tags sqlite_enable_multithreaded_checks
     - name: Race
       run: go test -v -race ./...
 

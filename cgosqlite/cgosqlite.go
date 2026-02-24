@@ -63,6 +63,14 @@ int tmstmpvfs_enabled=1;
 int tmstmpvfs_enabled=0;
 #endif
 
+// Enable mutex contention warnings.
+#cgo sqlite_enable_multithreaded_checks CFLAGS: -DSQLITE_ENABLE_MULTITHREADED_CHECKS
+#ifdef SQLITE_ENABLE_MULTITHREADED_CHECKS
+int multithreaded_checks_enabled=1;
+#else
+int multithreaded_checks_enabled=0;
+#endif
+
 #include "cgosqlite.h"
 */
 import "C"
@@ -528,4 +536,9 @@ func APIArmorEnabled() bool {
 // TimestampVFSEnabled reports whether or not sqlite was compiled with support for the tmstmpvfs shim.
 func TimestampVFSEnabled() bool {
 	return C.tmstmpvfs_enabled == 1
+}
+
+// MultithreadedChecksEnabled reports whether or not sqlite was compiled with SQLITE_ENABLE_MULTITHREADED_CHECKS.
+func MultithreadedChecksEnabled() bool {
+	return C.multithreaded_checks_enabled == 1
 }
