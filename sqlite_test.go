@@ -1449,6 +1449,16 @@ func (cl *connLogger) Statement(s string, err error) {
 	}
 }
 
+func (cl *connLogger) Script(s []string, err error) {
+	var stmts statements
+	if err == nil {
+		stmts.succeeded = s
+	} else {
+		stmts.failed = s
+	}
+	cl.ch <- stmts
+}
+
 func (cl *connLogger) Commit(err error) {
 	if cl.panicOnUse {
 		panic("unexpected connLogger.Commit()")
@@ -1533,6 +1543,42 @@ func TestConnLogger_writable(t *testing.T) {
 				t.Fatal("no logged statements after commit")
 			}
 		})
+	}
+}
+
+func TestConnLogger_script(t *testing.T) {
+	ctx := context.Background()
+	ch := make(chan statements, 1)
+	txl := connLogger{ch: ch}
+	makeLogger := func() ConnLogger { return &txl }
+	db := sql.OpenDB(ConnectorWithLogger("file:"+t.TempDir()+"/test.db", nil, nil, makeLogger))
+	configDB(t, db)
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("open conn: %s", err)
+	}
+	defer conn.Close()
+
+	if err := ExecScript(conn, `BEGIN; CREATE TABLE T (x INTEGER); INSERT INTO T VALUES (2); COMMIT;`); err != nil {
+		t.Fatalf("exec script: %s", err)
+	}
+
+	want := statements{
+		succeeded: []string{
+			"BEGIN;",
+			"CREATE TABLE T (x INTEGER);",
+			"INSERT INTO T VALUES (2);",
+			"COMMIT;",
+		},
+	}
+	select {
+	case got := <-ch:
+		if !slices.Equal(got.succeeded, want.succeeded) || !slices.Equal(got.failed, want.failed) {
+			t.Errorf("unexpected log statements. got:\n%s\nwant:\n%s", got, want)
+		}
+	default:
+		t.Fatal("no logged statements after script")
 	}
 }
 

@@ -1045,10 +1045,17 @@ type SQLConn interface {
 //	}
 //	c.Close() // return sql.Conn to pool
 func ExecScript(sqlconn SQLConn, queries string) error {
-	return sqlconn.Raw(func(driverConn any) error {
+	return sqlconn.Raw(func(driverConn any) (errRet error) {
 		c, ok := driverConn.(*conn)
 		if !ok {
 			return fmt.Errorf("sqlite.ExecScript: sql.Conn is not the sqlite driver: %T", driverConn)
+		}
+
+		var stmts []string
+		if c.logger != nil && !c.readOnly {
+			defer func() {
+				c.logger.Script(stmts, errRet)
+			}()
 		}
 
 		for {
@@ -1059,6 +1066,9 @@ func ExecScript(sqlconn SQLConn, queries string) error {
 			cstmt, rem, err := c.db.Prepare(queries, 0)
 			if err != nil {
 				return reserr(c.db, "ExecScript", queries, err)
+			}
+			if c.logger != nil && !c.readOnly {
+				stmts = append(stmts, cstmt.ExpandedSQL())
 			}
 			queries = rem
 			_, err = cstmt.Step(nil)
@@ -1201,6 +1211,11 @@ type ConnLogger interface {
 	// Statement is called with evaluated SQL when a statement is executed.
 	// err is the error (if any) resulting from executing the statement.
 	Statement(sql string, err error)
+
+	// Script is called with all evaluated SQL statements when a script is
+	// executed via [ExecScript]. err is the error (if any) resulting from
+	// executing the script.
+	Script(sql []string, err error)
 
 	// Commit is called after a commit statement, with the error resulting
 	// from the attempted commit.
