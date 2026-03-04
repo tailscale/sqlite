@@ -8,7 +8,6 @@ package cgosqlite
 // One exception is we do not use SQLITE_OMIT_DECLTYPE, as the design
 // of the database/sql driver seems to require it.
 
-#cgo !sqlite_trunk CFLAGS: -DSQLITE_RELEASE
 #cgo sqlite_trunk CFLAGS: -DSQLITE_TRUNK
 #cgo CFLAGS: -DSQLITE_THREADSAFE=2
 #cgo CFLAGS: -DSQLITE_DQS=0

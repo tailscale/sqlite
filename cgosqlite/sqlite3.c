@@ -1,4 +1,4 @@
-#ifdef SQLITE_RELEASE
+#ifndef SQLITE_TRUNK
 
 /******************************************************************************
 ** This file is an amalgamation of many separate C source files from SQLite
