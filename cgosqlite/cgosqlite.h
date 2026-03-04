@@ -1,5 +1,9 @@
 #include <math.h> // math.h is required on linux for FTS5.
+#ifdef SQLITE_TRUNK
+#include "sqlite3_trunk.h"
+#else
 #include "sqlite3.h"
+#endif
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
