@@ -69164,6 +69164,7 @@ static int walCheckpoint(
       ** the wal file. It would also be dangerous to proceed, as there may be
       ** fewer than pWal->hdr.mxFrame valid frames in the wal file.  */
       int bChg = memcmp(pLive->aSalt, pWal->hdr.aSalt, sizeof(pWal->hdr.aSalt));
+      if( bChg ) sqlite3_log(SQLITE_WARNING, "wal wrapped after header was read for this checkpoint");
       if( 0==bChg ){
         pInfo->nBackfillAttempted = mxSafeFrame; SEH_INJECT_FAULT;
 
