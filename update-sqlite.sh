@@ -41,4 +41,8 @@ unzip "$filename" || fatal "Unzip of $filename failed"
 [[ -d "$dirname" ]] || fatal "Directory $dirname missing after unzip"
 mv "$dirname"/*.{c,h} .
 mv shell.c shell.c.disabled
-
+mv sqlite3.c sqlite3.c_partial
+printf "#ifdef SQLITE_RELEASE\n\n" > sqlite3.c
+cat sqlite3.c_partial >> sqlite3.c
+printf "\n\n#endif\n" >> sqlite3.c
+rm sqlite3.c_partial
