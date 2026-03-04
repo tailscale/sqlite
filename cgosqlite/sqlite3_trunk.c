@@ -141394,7 +141394,7 @@ exec_out:
 */
 #ifndef SQLITE3EXT_H
 #define SQLITE3EXT_H
-/* #include "sqlite3.h" */
+/* #include "sqlite3_trunk.h" */
 
 /*
 ** The following structure holds pointers to all of the SQLite API
@@ -186161,7 +186161,7 @@ SQLITE_API int sqlite3_complete16(const void *zSql){
 ** This header file is used by programs that want to link against the
 ** FTS3 library.  All it does is declare the sqlite3Fts3Init() interface.
 */
-/* #include "sqlite3.h" */
+/* #include "sqlite3_trunk.h" */
 
 #if 0
 extern "C" {
@@ -186194,7 +186194,7 @@ SQLITE_PRIVATE int sqlite3Fts3Init(sqlite3 *db);
 ** This header file is used by programs that want to link against the
 ** RTREE library.  All it does is declare the sqlite3RtreeInit() interface.
 */
-/* #include "sqlite3.h" */
+/* #include "sqlite3_trunk.h" */
 
 #ifdef SQLITE_OMIT_VIRTUALTABLE
 # undef SQLITE_ENABLE_RTREE
@@ -186231,7 +186231,7 @@ SQLITE_PRIVATE int sqlite3RtreeInit(sqlite3 *db);
 ** This header file is used by programs that want to link against the
 ** ICU extension.  All it does is declare the sqlite3IcuInit() interface.
 */
-/* #include "sqlite3.h" */
+/* #include "sqlite3_trunk.h" */
 
 #if 0
 extern "C" {
@@ -192094,7 +192094,7 @@ SQLITE_PRIVATE void sqlite3ConnectionClosed(sqlite3 *db){
 SQLITE_EXTENSION_INIT3
 #endif
 
-/* #include "sqlite3.h" */
+/* #include "sqlite3_trunk.h" */
 /************** Include fts3_tokenizer.h in the middle of fts3Int.h **********/
 /************** Begin file fts3_tokenizer.h **********************************/
 /*
@@ -192123,7 +192123,7 @@ SQLITE_EXTENSION_INIT3
 ** If tokenizers are to be allowed to call sqlite3_*() functions, then
 ** we will need a way to register the API consistently.
 */
-/* #include "sqlite3.h" */
+/* #include "sqlite3_trunk.h" */
 
 /*
 ** Structures used by the tokenizer interface. When a new tokenizer
@@ -217202,7 +217202,7 @@ SQLITE_PRIVATE Module *sqlite3JsonVtabRegister(sqlite3 *db, const char *zName){
 /*   #include "sqlite3ext.h" */
   SQLITE_EXTENSION_INIT1
 #else
-/*   #include "sqlite3.h" */
+/*   #include "sqlite3_trunk.h" */
 #endif
 SQLITE_PRIVATE sqlite3_int64 sqlite3GetToken(const unsigned char*,int*); /* In SQLite core */
 
@@ -223517,7 +223517,7 @@ SQLITE_API int sqlite3_rtree_init(
 /*   #include "sqlite3ext.h" */
   SQLITE_EXTENSION_INIT1
 #else
-/*   #include "sqlite3.h" */
+/*   #include "sqlite3_trunk.h" */
 #endif
 
 /*
@@ -224413,7 +224413,7 @@ SQLITE_PRIVATE void sqlite3Fts3IcuTokenizerModule(
 /* #include <string.h> */
 /* #include <stdio.h> */
 
-/* #include "sqlite3.h" */
+/* #include "sqlite3_trunk.h" */
 
 #if !defined(SQLITE_CORE) || defined(SQLITE_ENABLE_RBU)
 /************** Include sqlite3rbu.h in the middle of sqlite3rbu.c ***********/
@@ -224687,7 +224687,7 @@ SQLITE_PRIVATE void sqlite3Fts3IcuTokenizerModule(
 #ifndef _SQLITE3RBU_H
 #define _SQLITE3RBU_H
 
-/* #include "sqlite3.h"              ** Required for error code definitions ** */
+/* #include "sqlite3_trunk.h"              ** Required for error code definitions ** */
 
 #if 0
 extern "C" {
@@ -239242,7 +239242,7 @@ SQLITE_API int sqlite3session_config(int op, void *pArg){
 #ifndef _FTS5_H
 #define _FTS5_H
 
-/* #include "sqlite3.h" */
+/* #include "sqlite3_trunk.h" */
 
 #if 0
 extern "C" {

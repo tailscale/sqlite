@@ -531,3 +531,13 @@ func APIArmorEnabled() bool {
 func TimestampVFSEnabled() bool {
 	return C.tmstmpvfs_enabled == 1
 }
+
+// SQLiteVersion reports SQLITE_VERSION.
+func SQLiteVersion() string {
+	return C.GoString(C.sqlite3_libversion())
+}
+
+// SQLiteVersionNumber reports SQLITE_VERSION_NUMBER.
+func SQLiteVersionNumber() int {
+	return int(C.sqlite3_libversion_number())
+}
