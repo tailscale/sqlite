@@ -20,7 +20,7 @@
 ** separate file. This file contains only code for the core SQLite library.
 **
 ** The content in this amalgamation comes from Fossil check-in
-** 61f8a28591a833b1f5834a347feefeba8414 with changes in files:
+** 557aeb43869d3585137b17690cb3b64f7de6 with changes in files:
 **
 **    
 */
@@ -471,10 +471,10 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.52.0"
 #define SQLITE_VERSION_NUMBER 3052000
-#define SQLITE_SOURCE_ID      "2026-03-04 13:08:14 61f8a28591a833b1f5834a347feefeba8414fecc7ff154f1b6ef19963f181812"
+#define SQLITE_SOURCE_ID      "2026-03-06 16:01:44 557aeb43869d3585137b17690cb3b64f7de6921774daae9e56403c3717dceab6"
 #define SQLITE_SCM_BRANCH     "trunk"
-#define SQLITE_SCM_TAGS       ""
-#define SQLITE_SCM_DATETIME   "2026-03-04T13:08:14.899Z"
+#define SQLITE_SCM_TAGS       "release major-release version-3.52.0"
+#define SQLITE_SCM_DATETIME   "2026-03-06T16:01:44.367Z"
 
 /*
 ** CAPI3REF: Run-Time Library Version Numbers
@@ -15450,6 +15450,7 @@ SQLITE_PRIVATE void sqlite3HashClear(Hash*);
 # define float sqlite_int64
 # define fabs(X) ((X)<0?-(X):(X))
 # define sqlite3IsOverflow(X) 0
+# define INFINITY (9223372036854775807LL)
 # ifndef SQLITE_BIG_DBL
 #   define SQLITE_BIG_DBL (((sqlite3_int64)1)<<50)
 # endif
@@ -29805,11 +29806,12 @@ static int checkMutexNotheld(sqlite3_mutex *p){
 */
 static int checkMutexInit(void){
   pGlobalMutexMethods = sqlite3DefaultMutex();
-  return SQLITE_OK;
+  return pGlobalMutexMethods->xMutexInit();
 }
 static int checkMutexEnd(void){
+  int rc = pGlobalMutexMethods->xMutexEnd();
   pGlobalMutexMethods = 0;
-  return SQLITE_OK;
+  return rc;
 }
 
 /*
@@ -261858,7 +261860,7 @@ static void fts5SourceIdFunc(
 ){
   assert( nArg==0 );
   UNUSED_PARAM2(nArg, apUnused);
-  sqlite3_result_text(pCtx, "fts5: 2026-03-04 13:08:14 61f8a28591a833b1f5834a347feefeba8414fecc7ff154f1b6ef19963f181812", -1, SQLITE_TRANSIENT);
+  sqlite3_result_text(pCtx, "fts5: 2026-03-06 16:01:44 557aeb43869d3585137b17690cb3b64f7de6921774daae9e56403c3717dceab6", -1, SQLITE_TRANSIENT);
 }
 
 /*
@@ -267460,5 +267462,6 @@ SQLITE_API int sqlite3_stmt_init(
 SQLITE_API const char *sqlite3_sourceid(void){ return SQLITE_SOURCE_ID; }
 #endif /* SQLITE_AMALGAMATION */
 /************************** End of sqlite3.c ******************************/
+
 
 #endif
