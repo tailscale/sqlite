@@ -46,3 +46,5 @@ printf "#ifndef SQLITE_TRUNK\n\n" > sqlite3.c
 cat sqlite3.c_partial >> sqlite3.c
 printf "\n\n#endif\n" >> sqlite3.c
 rm sqlite3.c_partial
+
+echo "Next step: update the expected version numbers in release_test.go"
