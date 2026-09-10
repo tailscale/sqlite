@@ -1,0 +1,34 @@
+name: check-sqlite-update
+
+# Re-runs update-sqlite.sh against the URL recorded in version-url.txt and
+# checks that it reproduces exactly what is checked in.
+
+on:
+  pull_request:
+    paths:
+      - check-sqlite-update.yml
+      - version-url.txt
+      - update-sqlite.sh
+      - cgosqlite/**
+
+permissions:
+  contents: read
+
+jobs:
+  reproducible:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Run update-sqlite.sh
+      run: ./update-sqlite.sh
+
+    - name: Check the working tree is unchanged
+      run: |
+        if [[ -n "$(git status --porcelain)" ]]; then
+          echo "::error::update-sqlite.sh did not reproduce the checked-in files"
+          git status --porcelain
+          git diff --stat
+          echo "::error::Please update version-url.txt and/or run update-sqlite.sh and commit the changes."
+          exit 1
+        fi

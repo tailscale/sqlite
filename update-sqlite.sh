@@ -1,11 +1,17 @@
 #!/bin/bash
 
+repodir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 usage() {
 	echo "$0 [sqlite-amalgamation-url]"
 	echo
 	echo "Lookup the URL to a SQLite amalgamation zip on https://sqlite.org"
 	echo "Pass that URL to this tool, e.g."
 	echo "  $0 https://sqlite.org/2024/sqlite-amalgamation-3460100.zip"
+	echo
+	echo "With no argument, re-runs against the URL already recorded in"
+	echo "version-url.txt, which should leave the tree unchanged. CI does"
+	echo "this to prove the vendored files are exactly the script's output."
 }
 
 fatal() {
@@ -14,7 +20,13 @@ fatal() {
 }
 
 case "$1" in
-	https://sqlite.org/*) ;;
+	https://sqlite.org/*)
+		url="$1"
+		;;
+	"")
+		url=$(tr -d '[:space:]' < "$repodir/version-url.txt") || exit 1
+		echo "$url"
+		;;
 	-h|--help|help)
 		usage
 		exit
@@ -25,9 +37,8 @@ case "$1" in
 		;;
 esac
 
-cd "$( dirname "${BASH_SOURCE[0]}" )"/cgosqlite || fatal "Not in correct directory"
+cd "$repodir/cgosqlite" || fatal "Not in correct directory"
 
-url="$1"
 filename=$(basename "$url")
 dirname=$(basename -s .zip "$filename")
 [[ -n "$filename" ]] || fatal "Could not extract filename from $url"
@@ -35,7 +46,7 @@ dirname=$(basename -s .zip "$filename")
 
 trap "rm -rf ./${filename} ./${dirname}" EXIT
 
-curl -O "$1" || fatal "Download of $url failed"
+curl -O "$url" || fatal "Download of $url failed"
 [[ -f "$filename" ]] || fatal "File $filename not found after download"
 unzip "$filename" || fatal "Unzip of $filename failed"
 [[ -d "$dirname" ]] || fatal "Directory $dirname missing after unzip"
